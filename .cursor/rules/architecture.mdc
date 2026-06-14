@@ -1,121 +1,129 @@
 ---
-alwaysApply: false
+description: Python·uv 프로젝트 Clean Architecture 폴더 구조·계층 의존성 규칙
+alwaysApply: true
 ---
-# Architecture (Clean Architecture)
+
+# Architecture (Clean Architecture · Python)
 
 ## 핵심 원칙
 
 - **의존성은 항상 안쪽(Domain)으로만** 향한다: Presentation → Application → Domain ← Infrastructure
-- Domain·Application은 **Next.js, React, DB 라이브러리 import 금지** (순수 TypeScript)
-- `app/` 페이지·Server Action은 **얇은 Adapter** — Use Case 호출과 UI 렌더만 담당
+- Domain·Application은 **HTTP 클라이언트·파일 I/O·환경변수 라이브러리 import 금지** (순수 Python)
+- `scripts/`·CLI는 **얇은 진입점** — Application Use Case만 호출
 
 ## 폴더 구조
 
 ```
-app/                          # Presentation (Delivery) — Next.js 라우팅
-├── (auth)/login/
-├── (dashboard)/              # dashboard, products, orders, customers, sales, settings
-└── api/                      # HTTP Adapter (선택)
-
-src/
-├── domain/                   # 엔티티, Value Object, Repository Port(인터페이스), 도메인 에러
-│   ├── product/ | order/ | customer/ | sales/ | auth/ | shared/
-├── application/              # Use Case, DTO, 외부 서비스 Port
-│   └── {모듈}/use-cases/ | dto/ | ports/
-└── infrastructure/           # Supabase Repository, Auth, Storage, HTTP Mapper
-    ├── persistence/repositories/
-    ├── auth/ | storage/ | http/
-    └── di/container.ts       # Use Case + Adapter 수동 조립
-
-components/                   # UI View (dumb·feature)
-├── ui/
-└── features/{모듈}/
-
-test/                         # TDD — domain → application → infrastructure 순
+today-house-price/
+├── pyproject.toml              # uv 프로젝트·의존성·도구 설정
+├── uv.lock                     # 잠금 파일 (커밋)
+├── .python-version             # (선택) Python 버전 고정
+├── .env / .env.example         # API 키 (커밋 금지)
+│
+├── src/
+│   └── today_house_price/      # 메인 패키지 (snake_case)
+│       ├── domain/             # 엔티티, Value Object, Repository Protocol, 도메인 예외
+│       │   └── housing/        # 부동산 실거래 도메인
+│       ├── application/        # Use Case, DTO, Port
+│       │   └── housing/
+│       │       ├── use_cases/
+│       │       └── dto/
+│       └── infrastructure/     # Port 구현 — API·CSV·설정
+│           ├── api/            # 서울 열린데이터광장 등 HTTP Adapter
+│           ├── persistence/    # CSV·Parquet 저장 Adapter
+│           └── config/         # .env 로드
+│
+├── scripts/                    # CLI 진입점 (얇게 유지)
+│   └── fetch_seoul_house_prices.py
+├── tests/                      # pytest — domain → application → infrastructure 순
+├── data/                       # 수집 결과 CSV (gitignore, 로컬·CI 아티팩트)
+└── README.md
 ```
+
+> **현재 단계:** `scripts/fetch_seoul_house_prices.py`에 수집 로직이 있을 수 있다. 기능 추가·리팩터 시 `src/today_house_price/` 계층으로 점진 이전한다.
 
 ## 계층별 책임
 
 | 계층 | 위치 | 담당 | import 허용 |
 |------|------|------|-------------|
-| Domain | `src/domain/` | 비즈니스 규칙, Entity, VO, Repository **interface** | 없음 |
-| Application | `src/application/` | Use Case, DTO, Port | Domain만 |
-| Infrastructure | `src/infrastructure/` | Port **구현**, Supabase·Auth·Storage 등 | Domain, Application |
-| Presentation | `app/`, `components/` | 페이지, Server Action, UI | Application (Use Case) |
+| Domain | `src/today_house_price/domain/` | 비즈니스 규칙, Entity, VO, Repository **Protocol** | 표준 라이브러리만 |
+| Application | `src/today_house_price/application/` | Use Case, DTO, Port | Domain만 |
+| Infrastructure | `src/today_house_price/infrastructure/` | Port **구현**, requests, CSV, .env | Domain, Application |
+| Presentation | `scripts/` | CLI, argparse, Use Case 호출 | Application (Use Case) |
 
-## 경로 별칭 (tsconfig)
+## 도메인 모듈 (today-house-price)
 
-- `@/domain/*` → `./src/domain/*`
-- `@/application/*` → `./src/application/*`
-- `@/infrastructure/*` → `./src/infrastructure/*`
-- `@/components/*` → `./components/*`
+| 모듈 | Domain | Application | Infrastructure |
+|------|--------|-------------|----------------|
+| 실거래 수집 | `housing` — `RealEstateTransaction`, `TransactionRepository` | `FetchTransactionsUseCase`, `ExportCsvUseCase` | `SeoulOpenDataClient`, `CsvTransactionWriter` |
+| (향후) 분석 | `housing` — 집계 Value Object | `SummarizeByDistrictUseCase` | `PandasCsvReader` 등 |
 
 ## 구현 규칙
 
+### Entity / Value Object
+
+- `@dataclass(frozen=True)` 또는 불변 객체 우선
+- Domain에 API 응답 dict·CSV row dict **직접 사용 금지** — Adapter에서 Entity로 매핑
+
+### Repository (Protocol)
+
+```python
+# src/today_house_price/domain/housing/repositories.py
+from typing import Protocol
+
+class TransactionRepository(Protocol):
+    def fetch_by_year(self, year: int) -> list[RealEstateTransaction]: ...
+```
+
+- **Protocol( interface )**: `domain/{모듈}/repositories.py`
+- **Adapter( impl )**: `infrastructure/api/`, `infrastructure/persistence/`
+
 ### Use Case
 
-- 파일: `src/application/{모듈}/use-cases/{Action}.ts`
-- 생성자로 Repository Port(인터페이스) 주입
-- 반환은 DTO — Entity를 Presentation에 직접 노출하지 않음
+- 파일: `application/{모듈}/use_cases/{action}.py`
+- 생성자로 Repository Protocol 주입 (`__init__`)
+- 반환은 DTO 또는 Domain Entity — CLI에 API raw dict 노출 금지
 
-### Repository
+### DI (수동 조립)
 
-- **Port( interface )**: `src/domain/{모듈}/repositories/`
-- **Adapter( impl )**: `src/infrastructure/persistence/repositories/`
+- `infrastructure/container.py` 한곳에서 Adapter + Use Case 조립·export
+- `scripts/`는 container 또는 factory 함수만 import
 
-### DI
+### CLI (`scripts/`)
 
-- Use Case 조립은 `src/infrastructure/di/container.ts` 한곳에서 export
-- `app/`·Server Action은 container의 Use Case만 import
-
-### Server Action
-
-- 위치: `app/(dashboard)/{기능}/actions.ts` (Presentation Adapter)
-- Prisma·Supabase·DB 클라이언트 직접 호출 **금지** → Use Case만 호출
-
-### components/
-
-- `components/ui/`: 재사용 dumb UI
-- `components/features/{모듈}/`: 화면 조합 View
-- Client Component는 props만 받음 — Use Case 직접 호출 금지
-
-## design/ 목업 ↔ 모듈 매핑
-
-| 화면 | app 라우트 | Domain 모듈 |
-|------|------------|-------------|
-| auth | `(auth)/login` | `auth` |
-| dashboard | `(dashboard)/` | 여러 모듈 집계 Use Case |
-| product | `products/` | `product` |
-| order | `orders/` | `order` |
-| customer | `customers/` | `customer` |
-| sales | `sales/` | `sales` |
-| setting | `settings/` | `settings` 또는 `shared` |
+- `argparse` 또는 `typer`로 인자 파싱 후 Use Case 실행
+- `requests`·파일 쓰기·`.env` 직접 처리 **금지** → Use Case 경유
 
 ## 테스트 (TDD)
 
 | 대상 | 위치 |
 |------|------|
-| Entity / VO | `test/domain/` |
-| Use Case (Mock Repository) | `test/application/` |
-| Repository Adapter | `test/infrastructure/` |
+| Entity / VO | `tests/domain/` |
+| Use Case (Mock Repository) | `tests/application/` |
+| API·CSV Adapter | `tests/infrastructure/` |
+
+- HTTP Adapter 테스트: `responses`/`pytest-httpserver` mock 또는 fixture JSON
+- **실제 Open API 프로덕션**을 단위 테스트에서 호출 **금지**
 
 ## 금지 (Anti-pattern)
 
-```typescript
-// ❌ app/ 또는 components/에서 Supabase 클라이언트 직접 사용
-import { createClient } from "@/infrastructure/supabase/client/server";
+```python
+# ❌ scripts/에서 requests 직접 호출
+response = requests.get(url, params=params)
 
-// ❌ domain/에서 Next.js import
-import { redirect } from "next/navigation";
+# ❌ domain/에서 requests·os.environ import
+import requests
 
-// ✅ app/ — Use Case만 호출
-import { listProducts } from "@/infrastructure/di/container";
-const products = await listProducts.execute({ page: 1 });
+# ✅ scripts/ — Use Case만 호출
+from today_house_price.infrastructure.container import build_fetch_use_case
+
+use_case = build_fetch_use_case()
+result = use_case.execute(FetchTransactionsInput(years=5))
 ```
 
 ## 신규 기능 추가 순서
 
-1. `src/domain/{모듈}` — Entity, Port
-2. `src/application/{모듈}` — Use Case, DTO + `test/application/` TDD
-3. `src/infrastructure/` — Adapter + `di/container.ts` 등록
-4. `app/(dashboard)/{기능}` + `components/features/{모듈}` 연결
+1. `src/today_house_price/domain/{모듈}` — Entity, Protocol
+2. `src/today_house_price/application/{모듈}` — Use Case + `tests/application/` TDD
+3. `src/today_house_price/infrastructure/` — Adapter + `container.py` 등록
+4. `scripts/{action}.py` — CLI 연결

@@ -1,0 +1,143 @@
+---
+description: Python·uv CLI·스크립트·코딩 구조 규칙
+alwaysApply: true
+---
+
+# Framework (Python · CLI)
+
+> 본 프로젝트는 **Next.js가 아닌 Python CLI + uv** 기반이다. 웹 UI가 추가될 때만 별도 프레임워크 규칙을 검토한다.
+
+## CLI 진입점 우선 (`scripts/`)
+
+- 실행·배치 진입은 **`scripts/`** — `uv run python scripts/{name}.py`
+- `scripts/` 파일은 **얇게** 유지: `argparse` → Use Case 호출 → `sys.exit(code)`
+- HTTP·CSV·`.env` 로직은 **`src/today_house_price/`** 계층에 둔다 (리팩터 대상)
+
+```python
+# ✅ scripts/fetch_seoul_house_prices.py — 조립만
+def main() -> int:
+    load_dotenv()
+    args = parse_args()
+    use_case = build_fetch_use_case(settings_from_env())
+    result = use_case.execute(FetchInput(years=args.years))
+    return 0 if result.success else 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+```python
+# ❌ scripts/에서 requests·csv 직접 처리 (장기적으로 infrastructure로 이동)
+response = requests.get(url)
+```
+
+## argparse 규칙
+
+- `argparse.ArgumentParser` + `description`·`epilog`(사용 예) 작성
+- 기본값·타입·help **한글**로 명확히
+- API 키: `--api-key` + 환경변수 fallback (`SEOUL_OPEN_API_KEY`)
+- 경로 인자: `type=Path`, `pathlib.Path` 사용
+- 종료 코드: `0` 성공, `1` 사용자·검증 오류, `2+` 예외
+
+```python
+parser.add_argument(
+    "--output",
+    type=Path,
+    default=Path("data/seoul_house_prices_5y.csv"),
+    help="저장할 CSV 경로",
+)
+```
+
+## 간결하고 읽기 쉬운 코드
+
+- 한 함수·클래스는 **한 가지 역할**만 (CLI = 파싱, Use Case = 비즈니스)
+- 변수·함수명은 **의도가 드러나게** (`data` → `transactions`)
+- 중첩 if/삼항은 2단계를 넘기면 early return·작은 함수로 분리
+- 매직 넘버·URL·필드명은 **상수** 또는 Domain/Application으로 이동
+- 주석은 **왜(why)** 만 — what은 코드·타입 힌트로 표현
+
+## 파일 크기·분리
+
+- **한 파일 ~150줄** 초과 시 분리 검토 (복잡도 높으면 ~100줄부터)
+- 분리 기준:
+  - CLI 파싱 → `scripts/` 또는 `presentation/cli/`
+  - Use Case → `application/{모듈}/use_cases/`
+  - API·CSV → `infrastructure/api/`, `infrastructure/persistence/`
+  - 상수·필드 매핑 → `domain/` 또는 `infrastructure/api/constants.py`
+- `scripts/*.py`는 **조립(compose)** 만 — 로직이 길어지면 `src/`로 추출
+
+## 타입·모듈 규칙
+
+- **`from __future__ import annotations`** 사용 (순환 import 완화)
+- 공개 함수·메서드에 **타입 힌트** 필수
+- Domain Entity: `@dataclass(frozen=True)` 우선
+- DTO·설정: `@dataclass(frozen=True)` 또는 `TypedDict`
+- `Any` 지양 — API 응답은 Adapter에서 `dict` → Entity 변환 후 상위 계층 전달
+
+```python
+@dataclass(frozen=True)
+class ApiResult:
+    code: str
+    message: str
+    total_count: int
+    rows: list[dict[str, Any]]  # Adapter 내부 한정, Use Case까지 전달 금지
+```
+
+## uv 실행·패키지
+
+- 로컬 실행: **`uv run python scripts/...`** (`.venv` 수동 activate 지양)
+- 패키지 import: `src/today_house_price/` — `uv sync` 후 `pythonpath`는 `pyproject.toml` `[tool.pytest.ini_options]` 참고
+- 신규 CLI 추가 시 `scripts/{action}.py` + README 사용 예 갱신
+
+## I/O·한글 처리
+
+- CSV 저장: **`encoding="utf-8-sig"`** (Excel 한글 호환)
+- 파일 쓰기: `pathlib.Path`, `path.parent.mkdir(parents=True, exist_ok=True)`
+- 콘솔 출력: 한글 메시지 OK — Windows cp949 이슈 시 특수문자(—, →) 대신 `-`, `->` 사용
+- `.env` 로드: `infrastructure/config/` — `scripts/`에서 직접 `os.environ` 접근 지양
+
+## HTTP·외부 API (Infrastructure)
+
+- `requests.Session` 재사용 (연결 풀·쿠키)
+- 재시도·backoff·timeout 명시
+- API rate limit: 요청 간 `delay` 파라미터화
+- 응답 파싱 실패·비정상 코드: Domain/Application 예외로 변환
+
+```python
+for attempt in range(1, MAX_RETRIES + 1):
+    try:
+        response = session.get(url, timeout=timeout)
+        response.raise_for_status()
+        return parse_response(response.json())
+    except (requests.RequestException, ValueError) as exc:
+        ...
+```
+
+## 로깅·출력
+
+- 진행 상황: `print` 허용 (CLI 도구) — 추후 `logging` 모듈로 통일 검토
+- `--verbose` / `--quiet` 플래그로 출력량 제어 (선택)
+- 민감정보(API 키·전체 URL with key) **출력 금지**
+
+## 테스트 연동
+
+- CLI: `subprocess` + `uv run python scripts/...` smoke test
+- Use Case·Adapter: `pytest` + mock — `scripts/` 로직은 최소화해 테스트 부담 감소
+- fixture: `tests/fixtures/`에 API JSON 샘플
+
+## (향후) 웹·UI 추가 시
+
+- FastAPI·Streamlit 등 도입 시 **Presentation 계층**으로 분리
+- 웹 라우트·핸들러도 **Use Case만** 호출 — API 클라이언트 직접 사용 금지
+- 별도 `web-framework.mdc` 분리 검토
+
+## 금지 요약
+
+| ❌ | ✅ |
+|----|-----|
+| `scripts/`에 300줄+ 비즈니스·HTTP 로직 | `src/today_house_price/` 계층 분리 |
+| `pip install` 후 `python` 직접 | `uv run python scripts/...` |
+| Domain에 `requests` import | Infrastructure Adapter |
+| API raw dict를 Use Case 밖으로 전파 | Entity·DTO 변환 |
+| `.env`·API 키 print/log | 환경변수·설정 객체 |
+| cp949 깨지는 특수문자 in print | ASCII 대체 또는 logging |

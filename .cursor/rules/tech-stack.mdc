@@ -1,163 +1,168 @@
 ---
-alwaysApply: false
+description: Python·uv 기술 스택·패키지·환경변수·인프라 배치 규칙
+alwaysApply: true
 ---
+
 # Tech Stack
 
 ## 스택 구성
 
 | 영역 | 기술 | 버전·비고 |
 |------|------|-----------|
-| Framework | Next.js (App Router) | 16.x — `node_modules/next/dist/docs/` 참조 |
-| UI | React | 19.x |
-| Language | TypeScript | 5.x, `strict: true` |
-| Styling | Tailwind CSS | v4 — `app/globals.css`의 `@import "tailwindcss"` |
-| Backend / DB | **Supabase** | Postgres + Auth + Storage + RLS |
+| Language | **Python** | 3.11+ (`.python-version` 또는 `requires-python`) |
+| 패키지·환경 | **uv** | `pyproject.toml` + `uv.lock` — pip/venv 직접 사용 지양 |
+| HTTP | **requests** | Open API 호출 |
+| 데이터 저장 | **CSV** (utf-8-sig) | `data/` — Git 제외 |
+| (향후) 분석 | pandas | 집계·시각화 시 선택 추가 |
 | Architecture | Clean Architecture | `.cursor/rules/architecture.mdc` |
-| Next.js 규칙 | Server Component 우선 등 | `.cursor/rules/next.js-framework.mdc` |
+| Framework | CLI·argparse·I/O | `.cursor/rules/framework.mdc` |
+| 테스트 | **pytest** + pytest-cov | `tests/` |
+| 린트·포맷 | **ruff** | `uv run ruff check` / `ruff format` |
+| 워크플로 | TDD | `.cursor/rules/workflow.mdc` |
 
-## Supabase 패키지
+## uv 프로젝트 구조
 
-```bash
-npm install @supabase/supabase-js @supabase/ssr
+```
+pyproject.toml      # [project], [dependency-groups], [tool.pytest], [tool.ruff]
+uv.lock             # 잠금 파일 — 반드시 커밋
+.python-version     # (선택) pyenv/uv python pin
+.venv/              # uv sync가 생성 — gitignore
 ```
 
-- `@supabase/supabase-js` — DB·Auth·Storage 클라이언트
-- `@supabase/ssr` — Server/Client/Browser용 Supabase 클라이언트 (`createServerClient`, `createBrowserClient`)
-- **auth-helpers** 패키지는 사용하지 않음 — `@supabase/ssr`만 사용
+### 의존성 관리
+
+```bash
+uv sync                          # 프로덕션 + dev 의존성 설치
+uv sync --no-dev                 # 프로덕션만
+uv add requests                  # 런타임 의존성 추가
+uv add --dev pytest pytest-cov ruff   # 개발 의존성 추가
+uv lock                          # uv.lock 갱신
+```
+
+- **`requirements.txt`는 레거시** — 신규 의존성은 `pyproject.toml`에만 추가
+- `uv export`로 requirements 생성이 필요할 때만 사용
+
+### 실행
+
+```bash
+uv run python scripts/fetch_seoul_house_prices.py --korean-headers
+uv run pytest
+uv run pytest --cov=src/today_house_price --cov-report=term-missing
+uv run ruff check .
+uv run ruff format .
+```
 
 ## 환경 변수
 
-`.env` / `.env.local` — **커밋 금지** (`.gitignore` 적용)
+`.env` — **커밋 금지** (`.gitignore` 적용). `.env.example`만 커밋.
 
 | 변수 | 노출 | 용도 |
 |------|------|------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase 프로젝트 URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public | 브라우저·Server Client (RLS 적용) |
-| `SUPABASE_SECRET_KEY` | **Server only** | Service role — RLS bypass, 관리 작업만 |
+| `SEOUL_OPEN_API_KEY` | **로컬·CI secret** | 서울 열린데이터광장 Open API 인증키 |
 
-- Publishable Key는 Client에 노출 가능 — **Secret Key는 Server·Infrastructure에서만**
-- `NEXT_PUBLIC_*` 외 비밀값을 Client Component·`'use client'` 파일에서 import **금지**
-- 레거시 `SUPABASE_ANON_KEY` 대신 본 프로젝트는 **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`** 사용
+- 인증키는 **`infrastructure/config/`**에서만 로드
+- Domain·Application·`scripts/`에 `os.environ` 직접 접근 **금지** → config 모듈 또는 DI 주입
 
-## Supabase × Clean Architecture 배치
+```python
+# infrastructure/config/settings.py
+from dataclasses import dataclass
+from pathlib import Path
 
-Supabase SDK는 **`src/infrastructure/`에만** 위치한다.
+@dataclass(frozen=True)
+class Settings:
+    seoul_open_api_key: str
 
-```
-src/infrastructure/supabase/
-├── client/
-│   ├── server.ts          # createServerClient (Server Component, Server Action)
-│   ├── browser.ts         # createBrowserClient (Client Component만)
-│   └── admin.ts           # Secret Key — Use Case 경유, app/ 직접 import 금지
-├── proxy/
-│   └── updateSession.ts   # proxy.ts에서 호출
-├── repositories/          # SupabaseProductRepository 등
-├── auth/                  # Auth Adapter
-└── database.types.ts      # supabase gen types 결과
+def load_settings(env_path: Path | None = None) -> Settings: ...
 ```
 
-- **Domain / Application**: Supabase import **금지** — Repository Port( interface )만 정의
-- **Repository 구현**: `from('table').select()` 등 Supabase 쿼리 → Domain Entity/DTO로 매핑
-- **app/·components/**: Supabase 클라이언트 직접 생성 **금지** → DI container의 Use Case
+## Open API × Clean Architecture 배치
 
-## Next.js 16 + Supabase Auth (`proxy.ts`)
+HTTP·API SDK는 **`src/today_house_price/infrastructure/api/`에만** 위치한다.
 
-- Next.js 16: `middleware.ts` 대신 **`proxy.ts`** + `export async function proxy`
-- 세션 갱신·보호 라우트는 `proxy.ts` → `updateSession()` 패턴
-- `createServerClient` 직후 **`supabase.auth.getUser()`** 호출 (`getSession()` 단독 사용 금지 — 보안)
-- `getAll` / `setAll` 쿠키 API 사용 — 구형 `get`/`set`/`remove` 패턴 금지
-
-```typescript
-// proxy.ts (루트) — 얇게 유지
-import { updateSession } from "@/infrastructure/supabase/proxy/updateSession";
-
-export async function proxy(request: Request) {
-  return updateSession(request);
-}
+```
+src/today_house_price/infrastructure/
+├── api/
+│   └── seoul_open_data.py     # tbLnOpendataRtmsV 클라이언트
+├── persistence/
+│   └── csv_writer.py          # CSV 저장 Adapter
+├── config/
+│   └── settings.py            # .env 로드
+└── container.py               # Use Case 조립
 ```
 
-## 데이터베이스 (Postgres)
+- **Domain / Application**: `requests` import **금지** — Repository Protocol만 정의
+- **Adapter**: API JSON → Domain Entity 매핑
+- **`scripts/`**: API URL·키 직접 사용 **금지** → Use Case
 
-- 스키마 변경: **`supabase/migrations/`** SQL 마이그레이션 (수동 Dashboard 편집 지양)
-- **RLS(Row Level Security) 필수** — 모든 public 테이블에 정책 정의
-- 클라이언트(Publishable Key) 경로는 RLS로 보호; Secret Key는 **제한된 Admin Adapter**만
-- 복잡한 비즈니스 규칙은 DB 트리거보다 **Domain / Use Case** 우선
+## 서울 열린데이터광장 API
 
-### 타입 생성
+| 항목 | 값 |
+|------|-----|
+| 데이터셋 | [서울시 부동산 실거래가 정보](https://data.seoul.go.kr/dataList/OA-21275/A/1/datasetView.do) |
+| 서비스명 | `tbLnOpendataRtmsV` |
+| Base URL | `http://openapi.seoul.go.kr:8088` |
+| URL 패턴 | `/{키}/json/tbLnOpendataRtmsV/{시작}/{끝}/{연도}` |
+| 페이지 크기 | 최대 1,000건/요청 |
 
-```bash
-supabase login
-supabase link
-supabase gen types typescript --linked --schema=public > src/infrastructure/supabase/database.types.ts
-```
+- `sample` 키: 요청당 최대 5건 (테스트용)
+- 접수년도 필터 — API 제공 범위는 **최근 2~3년**일 수 있음 (2022·2023 빈 응답 주의)
 
-- Repository·Client에서 `createClient<Database>(...)` 로 타입 적용
-- 스키마 변경 후 **types 재생성** 필수
+## 데이터 (`data/`)
 
-## Auth
+| 경로 | 용도 | Git |
+|------|------|-----|
+| `data/*.csv` | 수집 결과 | ignore |
+| `data/fetch_log.txt` | 수집 로그 | ignore |
 
-- Admin 로그인: Supabase Auth (`design/auth.png` → `(auth)/login`)
-- Server Action / Server Component: `server.ts` 클라이언트 + `getUser()`
-- Client Component(폼 등): `browser.ts` — Auth 상태 구독만, DB 쿼리는 Server로
-- 로그인 후 세션: `proxy` + cookie 동기화 유지
-
-## Storage (상품 이미지 등)
-
-- 버킷: Supabase Storage — **RLS 정책** 설정
-- 업로드: Server Action → Infrastructure Storage Adapter
-- 공개 URL: `getPublicUrl` 또는 signed URL — Presentation에는 URL 문자열만 전달
-
-## Tailwind CSS v4
-
-- 전역: `app/globals.css` — `@theme inline`으로 design token 정의
-- 컴포넌트: utility class 우선, `@apply`는 반복 패턴에만
-- 다크모드: `:root` CSS 변수 + `prefers-color-scheme` (현재 globals.css 패턴 유지)
-
-## TypeScript
-
-- `strict: true` 유지
-- Supabase row 타입을 Domain Entity에 **직접 사용하지 않음** — Adapter에서 매핑
-- `any` 지양 — DB 타입은 `Database['public']['Tables']['...']` 활용
+- CSV: **UTF-8 BOM** (`utf-8-sig`) — Excel 한글 호환
+- 대용량 CSV는 Git LFS 대신 **로컬 재수집** 또는 CI 아티팩트
 
 ## 테스트 (TDD)
 
 | 대상 | 방식 |
 |------|------|
-| Use Case | Mock Repository (Supabase 미사용) |
-| Supabase Repository | `test/infrastructure/` — test DB 또는 mock client |
-| E2E (선택) | Playwright + 테스트 프로젝트 |
+| Use Case | Mock Repository (`unittest.mock` / `pytest-mock`) |
+| HTTP Adapter | fixture JSON, `responses` 라이브러리 |
+| CLI | `pytest` subprocess 또는 `typer.testing.CliRunner` |
 
-- 단위 테스트에서 **실제 Supabase 프로덕션** 호출 금지
+- 단위 테스트에서 **실제 Open API** 호출 금지
+- 커버리지 목표: **lines ≥ 80%** (`pytest-cov`)
 
 ## 로컬 개발
 
 ```bash
-npm run dev          # Next.js
-supabase start       # 로컬 Supabase (Docker, 선택)
-supabase db reset    # 마이그레이션 + seed 적용
+# 1. uv 설치 (미설치 시)
+# https://docs.astral.sh/uv/
+
+# 2. 프로젝트 셋업
+uv sync
+copy .env.example .env   # Windows
+# .env에 SEOUL_OPEN_API_KEY 입력
+
+# 3. 데이터 수집
+uv run python scripts/fetch_seoul_house_prices.py --korean-headers
+
+# 4. 테스트·린트
+uv run pytest
+uv run ruff check .
 ```
 
 ## 금지 요약
 
 | ❌ | ✅ |
 |----|-----|
-| app/에서 `createClient` 직접 호출 | Infrastructure client + Use Case |
-| Client에 `SUPABASE_SECRET_KEY` | Server Infrastructure admin.ts |
-| `auth.getSession()`만으로 보호 | `auth.getUser()` |
-| RLS 없는 public 테이블 | 테이블마다 RLS 정책 |
-| `@supabase/auth-helpers-nextjs` | `@supabase/ssr` |
-| Dashboard만으로 스키마 변경 | `supabase/migrations/` |
-| Domain에 Supabase Row 타입 | Entity + Adapter 매핑 |
+| `pip install`로 의존성만 관리 | `uv add` / `uv sync` |
+| `scripts/`에서 `requests.get` 직접 | Infrastructure Adapter + Use Case |
+| Domain에 API JSON dict 그대로 사용 | Entity + Adapter 매핑 |
+| `.env` Git 커밋 | `.env.example`만 커밋 |
+| 테스트에서 실 API 호출 | Mock·fixture |
+| `requirements.txt`만 수정 | `pyproject.toml` + `uv.lock` |
 
-## 신규 테이블·기능 체크리스트
+## 신규 기능 체크리스트
 
-1. `supabase/migrations/` — SQL + RLS
-2. `supabase gen types` — `database.types.ts` 갱신
-3. `src/domain/` — Entity, Repository Port
-4. `src/infrastructure/supabase/repositories/` — Supabase Adapter
-5. `test/application/` — Use Case TDD
-6. `app/` + Server Action 연결
-
-##  마이그레이션 (migration)
- - supabase/migrations 폴더 위치
- - 마이그레이션을 수정하거나 삭제하거나 새로 생성할 때는 항상 사용자의 허가를 받는다.
+1. `domain/` — Entity, Repository Protocol
+2. `application/` — Use Case + `tests/application/` TDD
+3. `infrastructure/` — Adapter + `container.py`
+4. `scripts/` — CLI 연결
+5. `uv add`로 의존성 추가 → `uv.lock` 커밋
+6. README `변경 이력` 갱신

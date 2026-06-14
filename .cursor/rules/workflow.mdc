@@ -1,57 +1,140 @@
 ---
-alwaysApply: false
+description: today-house-price Python·uv 개발 워크플로우 — Plan→TDD→검증→README→Git
+alwaysApply: true
 ---
+
 # Development Workflow
 
-소스 코드를 **추가·수정·삭제**할 때 아래 단계를 **순서대로** 수행한다. 단계를 건너뛰거나 순서를 바꾸지 않는다.
+**today-house-price** — 서울 부동산 실거래가 데이터 수집·분석 (Python + uv + Clean Architecture)
+
+소스·규칙·설정을 **추가·수정·삭제**할 때 아래 Phase를 **순서대로** 수행한다. 단계를 건너뛰거나 순서를 바꾸지 않는다.
+
+---
+
+## 프로젝트 스냅샷 (2026-06 기준)
+
+| 항목 | 현재 상태 |
+|------|-----------|
+| 패키지 | `src/today_house_price/` (스캐폴드, 점진 확장) |
+| CLI | `scripts/fetch_seoul_house_prices.py` (수집 로직 포함 — **리팩터 대상**) |
+| 테스트 | `tests/` + pytest (`pyproject.toml` 설정) |
+| 의존성 | `pyproject.toml` + `uv.lock` (`requirements.txt`는 레거시) |
+| 데이터 | `data/*.csv` — Git 제외, 로컬 재수집 |
+| API | 서울 열린데이터광장 `tbLnOpendataRtmsV`, env: `SEOUL_OPEN_API_KEY` |
+
+> 신규 비즈니스 로직은 **`src/today_house_price/`** 에 추가하고, `scripts/`는 얇은 진입점만 유지한다 (`architecture.mdc`, `framework.mdc`).
+
+---
 
 ## 참조 문서·룰 (충돌 시 이 순서로 우선)
 
 | 순위 | 문서 | 용도 |
 |------|------|------|
-| 1 | `tdd.md` | Red→Green→Refactor, 테스트 종류, 커버리지, 실패 분석 |
-| 2 | `.cursor/rules/architecture.mdc` | Clean Architecture 계층·폴더 |
-| 3 | `.cursor/rules/tech-stack.mdc` | Supabase·패키지·env |
-| 4 | `.cursor/rules/next.js-framework.mdc` | Server Component·App Router |
-| 5 | `.cursor/rules/readme-and-github.mdc` | README·커밋 메시지 형식 |
+| 1 | `tdd.md` (있을 때) | Red→Green→Refactor, 커버리지, 실패 분석 상세 |
+| 2 | `.cursor/rules/architecture.mdc` | Domain / Application / Infrastructure / scripts 계층 |
+| 3 | `.cursor/rules/tech-stack.mdc` | uv, pytest, ruff, env, Open API |
+| 4 | `.cursor/rules/framework.mdc` | CLI, argparse, I/O, 한글·CSV 규칙 |
+| 5 | `.cursor/rules/readme-and-github.mdc` | README 변경 이력·프롬프트·커밋 형식 |
+
+**충돌 해석**
+
+- Git commit/push: **Phase 5** — 사용자 **명시적 요청 시에만** (readme-and-github 자동 커밋보다 우선)
+- 테스트 실행: **`uv run pytest`** (readme-and-github의 `npm run test` 대체)
+- 검증: **`ruff` + pytest** (`npm run build` 대체)
 
 ---
 
 ## Phase 0 — 시작 (Plan)
 
 ```
-□ 범위: Use Case / 페이지 / API / DB 마이그레이션 중 무엇인지 명시
-□ 수용 기준: 성공·실패·경계 조건을 문장으로 정의 (tdd.md §0)
-□ 영향 계층: Domain → Application → Infrastructure → Presentation 순서 확인
-□ 복잡한 작업이면 사용자에게 단계 계획 확인 후 진행
+□ 작업 유형 분류 (아래 표 참고)
+□ 범위: Use Case / CLI / API Adapter / CSV·데이터 / Cursor 규칙(.mdc) / uv 설정
+□ 수용 기준: 성공·실패·경계 조건을 문장으로 정의
+□ 영향 계층: Domain → Application → Infrastructure → scripts/ 순서 확인
+□ Open API 호출 포함 시: mock 테스트 계획, rate limit·소요 시간 고려
+□ uv add 필요 패키지 목록 확인
+□ 복잡한 작업(다계층 리팩터·대량 수집)이면 사용자에게 단계 계획 확인 후 진행
 ```
+
+### 작업 유형 빠른 분류
+
+| 유형 | 예시 | TDD | Phase 3 |
+|------|------|-----|---------|
+| Domain / Use Case | Entity, FetchTransactionsUseCase | **필수** | pytest + cov 80%+ |
+| Infrastructure | SeoulOpenDataClient, CsvWriter | **필수** (mock) | pytest |
+| CLI (`scripts/`) | argparse, main 진입 | mock 또는 smoke | pytest + `uv run python scripts/...` |
+| 데이터 수집 실행 | CSV 29만 건 fetch | 단위 테스트 별도 | smoke + 결과 건수 확인 |
+| `.mdc` / README only | workflow, architecture | 생략 가능 | — |
+| `pyproject.toml` / uv | 의존성 추가 | 생략 가능 | `uv sync` |
 
 ---
 
 ## Phase 1 — TDD (Red → Green → Refactor)
 
-`tdd.md` §1을 **행동(Behavior) 단위**로 반복한다.
+`tdd.md`가 없으면 아래 최소 절차를 따른다.
 
 ```
-□ Red: test/ 에 실패 테스트 작성 → npm run test (또는 test:unit) → FAIL 확인
-□ Green: 최소 production 코드 → 해당 스코프 PASS
-□ Refactor: 구조 개선 → 여전히 PASS
-□ Unit → Integration → E2E 순으로 필요한 테스트 모두 작성
+□ Red:   tests/{domain|application|infrastructure}/test_*.py 작성 → uv run pytest → FAIL 확인
+□ Green: src/today_house_price/ 에 최소 코드 → 해당 스코프 PASS
+□ Refactor: 구조 개선·계층 분리 → 여전히 PASS
+□ Unit(mock) → Integration(fixture) 순으로 확장
 ```
 
-**금지:** 테스트 없이 production 코드만 작성, `test.skip`으로 회피, assertion 완화
+### 테스트 규칙
+
+| 항목 | 규칙 |
+|------|------|
+| 위치 | `tests/` (`test/` 아님) |
+| 파일명 | `test_{module}.py` |
+| fixture | `tests/fixtures/` — API JSON 샘플 |
+| HTTP | **실제 Open API 호출 금지** — `unittest.mock` / `pytest-mock` / `responses` |
+| 커버리지 대상 | `src/today_house_price/` (`pyproject.toml` `[tool.coverage.run]`) |
+| 레거시 `scripts/` | 리팩터 전까지 해당 로직 테스트는 `tests/scripts/` 또는 Use Case mock으로 대체 |
+
+**금지:** production만 작성, `@pytest.mark.skip` 회피, assertion 완화, 실 API 키로 CI·단위 테스트
+
+### Red → Green → Refactor (요약)
+
+1. **Red** — 실패하는 테스트가 “무엇을 원하는지” 드러나게 작성
+2. **Green** — 테스트 통과에 필요한 최소 코드만
+3. **Refactor** — 중복 제거·계층 이동 후 `uv run pytest` 재실행
 
 ---
 
-## Phase 2 — 아키텍처·스택 준수 (Implement)
+## Phase 2 — 아키텍처·스택·프레임워크 (Implement)
 
 구현 중·후에 아래를 지킨다.
 
-- **Domain/Application**: Next.js·Supabase import 금지
-- **Infrastructure**: Supabase SDK·Repository Adapter만
-- **app/components**: 얇은 Presentation — Use Case(DI container)만 호출
-- **Next.js**: Server Component 우선, `params`/`searchParams` await
-- **한글** UI·문자열 UTF-8 안전 처리
+### 계층 (`architecture.mdc`)
+
+- **Domain / Application**: `requests`, `os.environ`, `pathlib` 파일 I/O **import 금지**
+- **Infrastructure**: HTTP·CSV·`.env` 로드 Adapter
+- **scripts/**: `argparse` + Use Case(`container`) 호출만 — **얇게**
+
+### uv (`tech-stack.mdc`)
+
+```bash
+uv add {package}              # 런타임
+uv add --dev {package}        # dev (pytest, ruff 등)
+uv sync                       # 설치·동기화
+# uv.lock 변경 시 커밋 포함 (Phase 5)
+```
+
+### CLI·I/O (`framework.mdc`)
+
+- 실행: `uv run python scripts/{name}.py`
+- CSV: `encoding="utf-8-sig"`
+- Windows 콘솔: print에 `—`, `→` 등 cp949 깨짐 문자 지양
+- API 키·전체 URL 로그 **금지**
+
+### 레거시 스크립트 리팩터 순서
+
+`scripts/fetch_seoul_house_prices.py` 등 monolithic 파일 수정 시:
+
+1. Domain Entity / Protocol 추출 → `tests/domain/`
+2. Use Case 추출 → `tests/application/`
+3. API·CSV Adapter 추출 → `tests/infrastructure/`
+4. `scripts/`를 조립만 남기기 → smoke test
 
 ---
 
@@ -60,21 +143,39 @@ alwaysApply: false
 **모든 구현이 끝난 뒤** 반드시 실행한다.
 
 ```bash
-npm run test
-npm run test:coverage   # 스크립트 있을 때 — lines ≥ 80%
-npm run build
-npm run lint            # 스크립트 있을 때
+uv sync
+uv run pytest
+uv run pytest --cov=src/today_house_price --cov-report=term-missing --cov-fail-under=80
+uv run ruff check .
+uv run ruff format --check .
 ```
 
 ```
-□ Unit / Integration / E2E — 전부 PASS
-□ Coverage — 80% 이상 (미달 시 tdd.md §4대로 테스트 추가)
-□ Build — 성공
+□ pytest — 전부 PASS (0 failed)
+□ coverage — src/today_house_price lines ≥ 80% (해당 코드 변경 시)
+□ ruff check / format — 통과
+□ CLI smoke — uv run python scripts/... (--max-pages 1 등으로 빠른 확인, 해당 시)
+□ 데이터 수집 — 건수·연도·출력 경로 확인 (data/*.csv는 Git 미포함)
 ```
+
+### 커버리지 예외 (임시)
+
+- **`scripts/`만 수정**하고 `src/` 미변경: cov 80% 미달 가능 — README에 사유 명시
+- **`src/` Use Case·Domain 추가/변경**: 80% **필수**
 
 ### 테스트 실패 시 (필수)
 
-`tdd.md` §6 형식으로 **원인 분석** 후 수정 → Phase 3 재실행.
+`tdd.md` §6가 없으면 아래 형식으로 분석 후 수정 → Phase 3 재실행.
+
+```
+## 실패 분석
+- 테스트: tests/.../test_xxx.py::test_yyy
+- 기대: ...
+- 실제: ...
+- 원인: ...
+- 수정: ... (파일 경로)
+```
+
 분석 없이 skip·assertion 완화·테스트 삭제 **금지**.
 
 ---
@@ -82,9 +183,12 @@ npm run lint            # 스크립트 있을 때
 ## Phase 4 — 문서 (Document)
 
 ```
-□ README.md `변경 이력`에 날짜·요약 추가 (최신 항목이 위)
-□ README와 코드 불일치 시 README를 코드 기준으로 수정
-□ Supabase 스키마 변경 시 supabase/README.md도 갱신
+□ README.md `변경 이력` — 날짜·요약 (최신 항목이 위)
+□ README `프롬프트` — 사용자 요청 문장·의도 (readme-and-github §1.1)
+□ README `작업 결과` — 분석·수정·실행 결과 요약 (해당 시)
+□ README와 코드 불일치 시 코드 기준으로 README 수정
+□ pyproject.toml / uv / CLI 옵션 변경 시 README `빠른 시작` 동기화
+□ Cursor 규칙(.mdc) 변경 시 workflow·architecture·tech-stack·framework 상호 참조 일치 확인
 ```
 
 ---
@@ -94,23 +198,25 @@ npm run lint            # 스크립트 있을 때
 ```
 □ 사용자가 commit을 **명시적으로 요청한 경우에만** git commit
 □ 사용자가 push/PR을 **명시적으로 요청한 경우에만** push
-□ 커밋 메시지: feat: / fix: / docs: / test: / refactor: 등 type prefix
-□ .env·secret 파일 커밋 금지
+□ 커밋 메시지: feat: / fix: / docs: / test: / refactor: / chore: 등 type prefix
+□ .env · data/*.csv · .venv · API 키 **커밋 금지**
+□ uv.lock — `uv add`/`uv lock` 변경 시 **커밋 포함**
+□ 기본 브랜치: master (원격 origin/master)
 ```
-
-> readme-and-github 룰의 자동 커밋·푸시는 **사용자 요청이 있을 때만** 수행한다.
 
 ---
 
-## 작업 유형별 최소 체크
+## 작업 유형별 최소 체크 (통합표)
 
-| 작업 | Phase 1 | Phase 3 |
-|------|---------|---------|
-| Domain/Use Case | Unit test 필수 | test + coverage |
-| Supabase Adapter | Integration test | test + build |
-| app/ 페이지 | E2E(핵심 path) | test + build |
-| `.mdc` / docs only | 테스트 생략 가능 | build(해당 시) |
-| SQL migration | integration 또는 수동 검증 | db push 후 확인 |
+| 작업 | Phase 0 | Phase 1 | Phase 3 | Phase 4 |
+|------|---------|---------|---------|---------|
+| Domain / Use Case | 계층 확인 | Unit 필수 | pytest + cov 80%+ | README |
+| HTTP·CSV Adapter | mock 계획 | Integration mock | pytest | README |
+| CLI (`scripts/`) | 얇은 진입 확인 | mock/smoke | pytest + uv run | README |
+| 데이터 수집 실행 | API 키·연도 범위 | — | smoke·건수 | README |
+| `.mdc` 규칙 | 충돌 룰 확인 | 생략 | — | README |
+| `pyproject.toml` | uv add 목록 | 생략 | uv sync | README |
+| 레거시 → src/ 리팩터 | 단계 계획 | 계층별 TDD | 전체 Phase 3 | README |
 
 ---
 
@@ -118,18 +224,20 @@ npm run lint            # 스크립트 있을 때
 
 작업 종료 시 아래를 간략히 보고한다.
 
-1. 변경 요약 (무엇을, 왜)
-2. 테스트 결과 (PASS/FAIL, coverage %)
-3. `npm run build` 결과
-4. README 변경 이력 반영 여부
-5. commit/push는 **요청 시에만** 수행했음을 명시
+1. **변경 요약** — 무엇을, 왜
+2. **`uv run pytest`** — PASS/FAIL, coverage % (해당 시)
+3. **`uv run ruff check`** — PASS/FAIL (해당 시)
+4. **README** — 변경 이력·프롬프트 반영 여부
+5. **Git** — commit/push는 **요청 시에만** 수행했음을 명시
 
 ---
 
 ## 한 줄 실행 프롬프트 (기능 요청 시)
 
 ```
-workflow.mdc와 tdd.md를 따른다. Red→Green→Refactor로 구현하고,
-완료 후 npm run test → test:coverage(80%+) → build를 실행한다.
-실패 시 tdd.md §6으로 분석·수정한다. README 변경 이력을 갱신한다.
+workflow.mdc를 따른다. Phase 0 Plan → Red→Green→Refactor(TDD) → architecture·tech-stack·framework 준수 구현 →
+uv sync && uv run pytest && uv run pytest --cov=src/today_house_price --cov-fail-under=80 &&
+uv run ruff check . && uv run ruff format --check .
+README 변경 이력·프롬프트·작업 결과를 갱신한다. 의존성은 uv add로 관리하고 uv.lock을 커밋한다.
+Git commit/push는 사용자 요청 시에만.
 ```

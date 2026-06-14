@@ -1,7 +1,7 @@
 # today-house-price
 
-서울 부동산 실거래가 데이터를 수집·분석하기 위한 프로젝트입니다.  
-현재는 **서울 열린데이터광장 Open API**를 이용해 집값(실거래가) 데이터를 CSV로 저장하는 Python 스크립트가 구현되어 있습니다.
+서울 부동산 실거래가 데이터를 수집·분석하기 위한 **Python + uv** 프로젝트입니다.  
+**서울 열린데이터광장 Open API**로 집값(실거래가) 데이터를 CSV로 저장합니다.
 
 ---
 
@@ -9,18 +9,16 @@
 
 ```
 today-house-price/
-├── .cursor/rules/          # Cursor 개발 규칙 (아키텍처, TDD, Next.js 등)
+├── pyproject.toml              # uv 프로젝트·의존성 (pytest, ruff 포함)
+├── uv.lock                     # 잠금 파일
+├── src/today_house_price/      # Clean Architecture 패키지 (점진 확장)
 ├── scripts/
-│   └── fetch_seoul_house_prices.py   # 서울 실거래가 API → CSV 수집
-├── data/
-│   ├── seoul_house_prices_5y.csv     # 수집 결과 (295,130건)
-│   └── test_sample.csv               # sample 키 테스트용
-├── requirements.txt        # Python 의존성 (requests)
-├── .env.example            # API 키 설정 예시
-└── README.md
+│   └── fetch_seoul_house_prices.py   # 서울 실거래가 API → CSV 수집 CLI
+├── tests/                      # pytest
+├── data/                       # 수집 결과 (gitignore)
+├── .env.example
+└── .cursor/rules/              # architecture, tech-stack, workflow, framework 등
 ```
-
-> 향후 Next.js + Supabase 기반 웹 서비스로 확장할 계획이며, `.cursor/rules/`에 Clean Architecture·TDD 워크플로우가 정의되어 있습니다.
 
 ---
 
@@ -29,12 +27,10 @@ today-house-price/
 ### 1. 환경 설정
 
 ```powershell
-# 가상환경 (선택)
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# uv 설치: https://docs.astral.sh/uv/
 
-# 의존성 설치
-pip install -r requirements.txt
+# 의존성 설치 (프로덕션 + dev)
+uv sync
 
 # API 키 설정
 copy .env.example .env
@@ -46,7 +42,14 @@ copy .env.example .env
 ### 2. 데이터 수집 실행
 
 ```powershell
-python scripts/fetch_seoul_house_prices.py --korean-headers
+uv run python scripts/fetch_seoul_house_prices.py --korean-headers
+```
+
+### 3. 테스트·린트
+
+```powershell
+uv run pytest
+uv run ruff check .
 ```
 
 | 옵션 | 설명 | 기본값 |
@@ -57,6 +60,8 @@ python scripts/fetch_seoul_house_prices.py --korean-headers
 | `--page-size` | 페이지당 건수 (최대 1000) | `1000` |
 | `--delay` | API 요청 간 대기(초) | `0.25` |
 | `--max-pages` | 연도당 최대 페이지 (테스트용) | 제한 없음 |
+
+> `requirements.txt`는 레거시입니다. 신규 의존성은 `uv add`로 `pyproject.toml`에 추가하세요.
 
 ---
 
@@ -93,6 +98,10 @@ python scripts/fetch_seoul_house_prices.py --korean-headers
 | 2 | 2026-06-14 | 서울 집값 API 수집 스크립트 작성 | `scripts/fetch_seoul_house_prices.py`, `requirements.txt`, `.env.example` |
 | 3 | 2026-06-14 | 최근 5년치 전체 수집 실행 | `data/seoul_house_prices_5y.csv` (295,130건) |
 | 4 | 2026-06-14 | README 작성 | `README.md` |
+| 5 | 2026-06-14 | Python·uv 규칙 개편 | `.cursor/rules/*.mdc`, `pyproject.toml`, `src/` |
+| 6 | 2026-06-14 | `framework.mdc` 생성 | `next.js-framework.mdc` 삭제·Python CLI 규칙으로 교체 |
+| 7 | 2026-06-14 | `workflow.mdc` upgrade | Phase·TDD·검증·레거시 리팩터 가이드 보강 |
+| 8 | 2026-06-14 | `readme-and-github.mdc` 갱신 | Python·uv 기준, GitHub 워크플로우 정리 |
 
 ---
 
@@ -118,11 +127,29 @@ python scripts/fetch_seoul_house_prices.py --korean-headers
 
 **의도:** 발급받은 API 키로 5년치 데이터 실제 수집 실행
 
-### 4. README 작성
+### 4. README·규칙 개편
 
-> **프롬프트:** `README 파일을 만들어서 작업내역, 프롬프트, 작업 결과를 작성해 주세요. 룰의 README-and-gitbub를 적용해 주세요`
+> **프롬프트:** `architecture, tech-stack, workflow 룰을 Python·uv 구조에 맞게 수정`
 
-**의도:** 작업 이력·프롬프트·결과를 README에 정리, `readme-and-github` 룰의 변경 이력 형식 적용
+**의도:** Next.js/Supabase 템플릿 규칙을 현재 Python 데이터 수집 프로젝트에 맞게 정렬
+
+### 5. framework.mdc 개편
+
+> **프롬프트:** `next.js-framework.mdc도 현재 프로젝트 구조를 기반으로 변경하고 제목도 framework.mdc로 변경해`
+
+**의도:** Next.js 규칙을 Python CLI·uv 실행 규칙으로 교체, 파일명 `framework.mdc`로 통일
+
+### 6. workflow.mdc upgrade
+
+> **프롬프트:** `workflow.mdc도 변경된 내용 반영해서 upgrade 해주세요`
+
+**의도:** Python·uv·framework·레거시 scripts·프로젝트 현황을 workflow Phase 전반에 반영
+
+### 7. readme-and-github.mdc · Git 반영
+
+> **프롬프트:** `수정하고 커밋, 푸쉬해주세요`
+
+**의도:** readme-and-github를 Python·uv 기준으로 수정 후 변경사항 커밋·푸시
 
 ---
 
@@ -192,6 +219,11 @@ python scripts/fetch_seoul_house_prices.py --korean-headers
 
 | 날짜 | 요약 |
 |------|------|
+| 2026-06-14 | **`readme-and-github.mdc`** — Python·uv·tests/ 기준으로 갱신, commit/push는 요청 시만 명시 |
+| 2026-06-14 | **`workflow.mdc` upgrade** — 프로젝트 스냅샷, 작업 유형표, 레거시 리팩터·실패 분석·충돌 해석 보강 |
+| 2026-06-14 | **`framework.mdc`** — `next.js-framework.mdc`를 Python CLI 규칙으로 교체·개명 |
+| 2026-06-14 | **Cursor 규칙** — `architecture`·`tech-stack`·`workflow`를 Python·uv 구조로 전면 개편 |
+| 2026-06-14 | **uv 프로젝트** — `pyproject.toml`, `uv.lock`, `src/today_house_price/`, `tests/` 추가 |
 | 2026-06-14 | **`.gitignore`** 추가 — `.env`, `.venv`, `data/*.csv` 등 Git 제외 |
 | 2026-06-14 | **README.md** 최초 작성 — 작업 내역, 프롬프트, 수집 결과(295,130건) 문서화 |
 | 2026-06-14 | **데이터 수집** — `data/seoul_house_prices_5y.csv` 생성 (2024~2026 접수년도, 295,130건) |
@@ -202,6 +234,6 @@ python scripts/fetch_seoul_house_prices.py --korean-headers
 
 ## 향후 계획 (참고)
 
+- [ ] `scripts/` 수집 로직을 `src/today_house_price/` Clean Architecture 계층으로 리팩터
 - [ ] 국토교통부 API 연동으로 2021~2023년 데이터 보완
-- [ ] Next.js + Supabase 웹 서비스 스캐폴드 (`workflow.mdc` / `architecture.mdc` 기준)
-- [ ] `test/` TDD 및 `npm run test` / `npm run build` 파이프라인 구성
+- [ ] Use Case·Adapter 단위 pytest (커버리지 80%+)

@@ -1,23 +1,53 @@
 ---
-description: 소스 수정 시 README 변경 이력 갱신 및 GitHub 푸시
+description: 소스 수정 시 README 변경 이력·프롬프트·작업 결과 갱신 및 GitHub 반영
 alwaysApply: true
 ---
-# 기본 규칙
-1. 글을 작성하거나 수정할 때 한글로 작성해도 오류가 나지 않도록 코드를 작성
-2. TDD(Test Driven Development)을 원칙으로 테스트 코드를 작성하고, 테스트 코드를 통과하는 소스코드를 작성한다.
-3. 테스트 코드는 `test` 폴더에 위치한다.
-4. 테스트 코드는 `npm run test`로 실행할 수 있도록 한다.
-5. 코드는 클린코드 원칙으로 작성한다.
-6. `npm run build`로 빌드가 통과하는지 확인한다.
 
+# 기본 규칙
+
+1. 글을 작성하거나 수정할 때 한글로 작성해도 오류가 나지 않도록 코드를 작성한다.
+2. TDD(Test Driven Development)을 원칙으로 테스트 코드를 작성하고, 테스트를 통과하는 소스코드를 작성한다.
+3. 테스트 코드는 **`tests/`** 폴더에 위치한다.
+4. 테스트는 **`uv run pytest`** 로 실행한다.
+5. 코드는 클린코드 원칙으로 작성한다.
+6. 검증은 **`uv run ruff check .`** 및 **`uv run pytest`** 로 확인한다.
+
+> Git commit/push는 **`.cursor/rules/workflow.mdc` Phase 5** — 사용자가 **명시적으로 요청한 경우에만** 수행한다.
+
+---
 
 # README & GitHub 워크플로우
 
 소스 코드를 수정한 경우, 작업 완료 후에 반드시 다음을 수행한다.
-1 **README.md `변경 이력` 섹션**에 날짜·요약을 최신 항목으로 추가한다.
-  1.1 사용자가 요청한 프롬프트와 분석/수정한 결과 내용을 추가한다.
+
+1. **README.md `변경 이력` 섹션**에 날짜·요약을 **최신 항목으로** 추가한다.
+   1.1 사용자가 요청한 **프롬프트**와 **분석/수정한 결과**를 `프롬프트`·`작업 결과` 섹션에 추가한다.
 2. README 내용이 코드와 충돌하면 **최신 작업 내용 기준**으로 README를 수정한다.
-3. 작업이 완료 되면 git commit 명령어를 사용하여 커밋을 생성한다.
-4. 커밋 메시지는 `feat:`, `fix:`, `docs:` 등 type prefix를 사용한다.
-5. 커밋 후 `git push origin master`(또는 feature 브랜치 → PR)로 GitHub에 반영한다.
-6. 변경사항이 발생 후 테스트가 완료되면 github에 변경 사항을 올려줘
+3. **`pyproject.toml` / uv / CLI** 변경 시 README `빠른 시작`(`uv sync` 등)과 일치시킨다.
+4. 커밋 메시지는 `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:` 등 type prefix를 사용한다.
+5. **커밋·푸시는 사용자 요청 시에만** — 요청 시 `git push origin master`(또는 feature 브랜치 → PR)로 GitHub에 반영한다.
+6. `.env`, `data/*.csv`, API 키 등 **비밀·대용량 파일은 커밋하지 않는다.**
+7. `uv.lock`은 의존성 변경 시 **커밋에 포함**한다.
+
+---
+
+# README 필수 섹션 (본 프로젝트)
+
+| 섹션 | 용도 |
+|------|------|
+| 변경 이력 | 날짜·요약 (최신이 위) |
+| 프롬프트 | 사용자 요청 문장·의도 |
+| 작업 결과 | 분석·구현·실행 결과 |
+| 빠른 시작 | `uv sync`, `uv run python scripts/...` |
+
+---
+
+# 검증 (커밋 전, workflow Phase 3)
+
+```bash
+uv sync
+uv run pytest
+uv run ruff check .
+```
+
+- `src/today_house_price/` 변경 시: `uv run pytest --cov=src/today_house_price --cov-fail-under=80`
