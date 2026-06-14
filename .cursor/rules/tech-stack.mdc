@@ -1,0 +1,163 @@
+---
+alwaysApply: false
+---
+# Tech Stack
+
+## 스택 구성
+
+| 영역 | 기술 | 버전·비고 |
+|------|------|-----------|
+| Framework | Next.js (App Router) | 16.x — `node_modules/next/dist/docs/` 참조 |
+| UI | React | 19.x |
+| Language | TypeScript | 5.x, `strict: true` |
+| Styling | Tailwind CSS | v4 — `app/globals.css`의 `@import "tailwindcss"` |
+| Backend / DB | **Supabase** | Postgres + Auth + Storage + RLS |
+| Architecture | Clean Architecture | `.cursor/rules/architecture.mdc` |
+| Next.js 규칙 | Server Component 우선 등 | `.cursor/rules/next.js-framework.mdc` |
+
+## Supabase 패키지
+
+```bash
+npm install @supabase/supabase-js @supabase/ssr
+```
+
+- `@supabase/supabase-js` — DB·Auth·Storage 클라이언트
+- `@supabase/ssr` — Server/Client/Browser용 Supabase 클라이언트 (`createServerClient`, `createBrowserClient`)
+- **auth-helpers** 패키지는 사용하지 않음 — `@supabase/ssr`만 사용
+
+## 환경 변수
+
+`.env` / `.env.local` — **커밋 금지** (`.gitignore` 적용)
+
+| 변수 | 노출 | 용도 |
+|------|------|------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase 프로젝트 URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public | 브라우저·Server Client (RLS 적용) |
+| `SUPABASE_SECRET_KEY` | **Server only** | Service role — RLS bypass, 관리 작업만 |
+
+- Publishable Key는 Client에 노출 가능 — **Secret Key는 Server·Infrastructure에서만**
+- `NEXT_PUBLIC_*` 외 비밀값을 Client Component·`'use client'` 파일에서 import **금지**
+- 레거시 `SUPABASE_ANON_KEY` 대신 본 프로젝트는 **`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`** 사용
+
+## Supabase × Clean Architecture 배치
+
+Supabase SDK는 **`src/infrastructure/`에만** 위치한다.
+
+```
+src/infrastructure/supabase/
+├── client/
+│   ├── server.ts          # createServerClient (Server Component, Server Action)
+│   ├── browser.ts         # createBrowserClient (Client Component만)
+│   └── admin.ts           # Secret Key — Use Case 경유, app/ 직접 import 금지
+├── proxy/
+│   └── updateSession.ts   # proxy.ts에서 호출
+├── repositories/          # SupabaseProductRepository 등
+├── auth/                  # Auth Adapter
+└── database.types.ts      # supabase gen types 결과
+```
+
+- **Domain / Application**: Supabase import **금지** — Repository Port( interface )만 정의
+- **Repository 구현**: `from('table').select()` 등 Supabase 쿼리 → Domain Entity/DTO로 매핑
+- **app/·components/**: Supabase 클라이언트 직접 생성 **금지** → DI container의 Use Case
+
+## Next.js 16 + Supabase Auth (`proxy.ts`)
+
+- Next.js 16: `middleware.ts` 대신 **`proxy.ts`** + `export async function proxy`
+- 세션 갱신·보호 라우트는 `proxy.ts` → `updateSession()` 패턴
+- `createServerClient` 직후 **`supabase.auth.getUser()`** 호출 (`getSession()` 단독 사용 금지 — 보안)
+- `getAll` / `setAll` 쿠키 API 사용 — 구형 `get`/`set`/`remove` 패턴 금지
+
+```typescript
+// proxy.ts (루트) — 얇게 유지
+import { updateSession } from "@/infrastructure/supabase/proxy/updateSession";
+
+export async function proxy(request: Request) {
+  return updateSession(request);
+}
+```
+
+## 데이터베이스 (Postgres)
+
+- 스키마 변경: **`supabase/migrations/`** SQL 마이그레이션 (수동 Dashboard 편집 지양)
+- **RLS(Row Level Security) 필수** — 모든 public 테이블에 정책 정의
+- 클라이언트(Publishable Key) 경로는 RLS로 보호; Secret Key는 **제한된 Admin Adapter**만
+- 복잡한 비즈니스 규칙은 DB 트리거보다 **Domain / Use Case** 우선
+
+### 타입 생성
+
+```bash
+supabase login
+supabase link
+supabase gen types typescript --linked --schema=public > src/infrastructure/supabase/database.types.ts
+```
+
+- Repository·Client에서 `createClient<Database>(...)` 로 타입 적용
+- 스키마 변경 후 **types 재생성** 필수
+
+## Auth
+
+- Admin 로그인: Supabase Auth (`design/auth.png` → `(auth)/login`)
+- Server Action / Server Component: `server.ts` 클라이언트 + `getUser()`
+- Client Component(폼 등): `browser.ts` — Auth 상태 구독만, DB 쿼리는 Server로
+- 로그인 후 세션: `proxy` + cookie 동기화 유지
+
+## Storage (상품 이미지 등)
+
+- 버킷: Supabase Storage — **RLS 정책** 설정
+- 업로드: Server Action → Infrastructure Storage Adapter
+- 공개 URL: `getPublicUrl` 또는 signed URL — Presentation에는 URL 문자열만 전달
+
+## Tailwind CSS v4
+
+- 전역: `app/globals.css` — `@theme inline`으로 design token 정의
+- 컴포넌트: utility class 우선, `@apply`는 반복 패턴에만
+- 다크모드: `:root` CSS 변수 + `prefers-color-scheme` (현재 globals.css 패턴 유지)
+
+## TypeScript
+
+- `strict: true` 유지
+- Supabase row 타입을 Domain Entity에 **직접 사용하지 않음** — Adapter에서 매핑
+- `any` 지양 — DB 타입은 `Database['public']['Tables']['...']` 활용
+
+## 테스트 (TDD)
+
+| 대상 | 방식 |
+|------|------|
+| Use Case | Mock Repository (Supabase 미사용) |
+| Supabase Repository | `test/infrastructure/` — test DB 또는 mock client |
+| E2E (선택) | Playwright + 테스트 프로젝트 |
+
+- 단위 테스트에서 **실제 Supabase 프로덕션** 호출 금지
+
+## 로컬 개발
+
+```bash
+npm run dev          # Next.js
+supabase start       # 로컬 Supabase (Docker, 선택)
+supabase db reset    # 마이그레이션 + seed 적용
+```
+
+## 금지 요약
+
+| ❌ | ✅ |
+|----|-----|
+| app/에서 `createClient` 직접 호출 | Infrastructure client + Use Case |
+| Client에 `SUPABASE_SECRET_KEY` | Server Infrastructure admin.ts |
+| `auth.getSession()`만으로 보호 | `auth.getUser()` |
+| RLS 없는 public 테이블 | 테이블마다 RLS 정책 |
+| `@supabase/auth-helpers-nextjs` | `@supabase/ssr` |
+| Dashboard만으로 스키마 변경 | `supabase/migrations/` |
+| Domain에 Supabase Row 타입 | Entity + Adapter 매핑 |
+
+## 신규 테이블·기능 체크리스트
+
+1. `supabase/migrations/` — SQL + RLS
+2. `supabase gen types` — `database.types.ts` 갱신
+3. `src/domain/` — Entity, Repository Port
+4. `src/infrastructure/supabase/repositories/` — Supabase Adapter
+5. `test/application/` — Use Case TDD
+6. `app/` + Server Action 연결
+
+##  마이그레이션 (migration)
+ - supabase/migrations 폴더 위치
+ - 마이그레이션을 수정하거나 삭제하거나 새로 생성할 때는 항상 사용자의 허가를 받는다.

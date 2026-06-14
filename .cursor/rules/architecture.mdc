@@ -1,0 +1,121 @@
+---
+alwaysApply: false
+---
+# Architecture (Clean Architecture)
+
+## 핵심 원칙
+
+- **의존성은 항상 안쪽(Domain)으로만** 향한다: Presentation → Application → Domain ← Infrastructure
+- Domain·Application은 **Next.js, React, DB 라이브러리 import 금지** (순수 TypeScript)
+- `app/` 페이지·Server Action은 **얇은 Adapter** — Use Case 호출과 UI 렌더만 담당
+
+## 폴더 구조
+
+```
+app/                          # Presentation (Delivery) — Next.js 라우팅
+├── (auth)/login/
+├── (dashboard)/              # dashboard, products, orders, customers, sales, settings
+└── api/                      # HTTP Adapter (선택)
+
+src/
+├── domain/                   # 엔티티, Value Object, Repository Port(인터페이스), 도메인 에러
+│   ├── product/ | order/ | customer/ | sales/ | auth/ | shared/
+├── application/              # Use Case, DTO, 외부 서비스 Port
+│   └── {모듈}/use-cases/ | dto/ | ports/
+└── infrastructure/           # Supabase Repository, Auth, Storage, HTTP Mapper
+    ├── persistence/repositories/
+    ├── auth/ | storage/ | http/
+    └── di/container.ts       # Use Case + Adapter 수동 조립
+
+components/                   # UI View (dumb·feature)
+├── ui/
+└── features/{모듈}/
+
+test/                         # TDD — domain → application → infrastructure 순
+```
+
+## 계층별 책임
+
+| 계층 | 위치 | 담당 | import 허용 |
+|------|------|------|-------------|
+| Domain | `src/domain/` | 비즈니스 규칙, Entity, VO, Repository **interface** | 없음 |
+| Application | `src/application/` | Use Case, DTO, Port | Domain만 |
+| Infrastructure | `src/infrastructure/` | Port **구현**, Supabase·Auth·Storage 등 | Domain, Application |
+| Presentation | `app/`, `components/` | 페이지, Server Action, UI | Application (Use Case) |
+
+## 경로 별칭 (tsconfig)
+
+- `@/domain/*` → `./src/domain/*`
+- `@/application/*` → `./src/application/*`
+- `@/infrastructure/*` → `./src/infrastructure/*`
+- `@/components/*` → `./components/*`
+
+## 구현 규칙
+
+### Use Case
+
+- 파일: `src/application/{모듈}/use-cases/{Action}.ts`
+- 생성자로 Repository Port(인터페이스) 주입
+- 반환은 DTO — Entity를 Presentation에 직접 노출하지 않음
+
+### Repository
+
+- **Port( interface )**: `src/domain/{모듈}/repositories/`
+- **Adapter( impl )**: `src/infrastructure/persistence/repositories/`
+
+### DI
+
+- Use Case 조립은 `src/infrastructure/di/container.ts` 한곳에서 export
+- `app/`·Server Action은 container의 Use Case만 import
+
+### Server Action
+
+- 위치: `app/(dashboard)/{기능}/actions.ts` (Presentation Adapter)
+- Prisma·Supabase·DB 클라이언트 직접 호출 **금지** → Use Case만 호출
+
+### components/
+
+- `components/ui/`: 재사용 dumb UI
+- `components/features/{모듈}/`: 화면 조합 View
+- Client Component는 props만 받음 — Use Case 직접 호출 금지
+
+## design/ 목업 ↔ 모듈 매핑
+
+| 화면 | app 라우트 | Domain 모듈 |
+|------|------------|-------------|
+| auth | `(auth)/login` | `auth` |
+| dashboard | `(dashboard)/` | 여러 모듈 집계 Use Case |
+| product | `products/` | `product` |
+| order | `orders/` | `order` |
+| customer | `customers/` | `customer` |
+| sales | `sales/` | `sales` |
+| setting | `settings/` | `settings` 또는 `shared` |
+
+## 테스트 (TDD)
+
+| 대상 | 위치 |
+|------|------|
+| Entity / VO | `test/domain/` |
+| Use Case (Mock Repository) | `test/application/` |
+| Repository Adapter | `test/infrastructure/` |
+
+## 금지 (Anti-pattern)
+
+```typescript
+// ❌ app/ 또는 components/에서 Supabase 클라이언트 직접 사용
+import { createClient } from "@/infrastructure/supabase/client/server";
+
+// ❌ domain/에서 Next.js import
+import { redirect } from "next/navigation";
+
+// ✅ app/ — Use Case만 호출
+import { listProducts } from "@/infrastructure/di/container";
+const products = await listProducts.execute({ page: 1 });
+```
+
+## 신규 기능 추가 순서
+
+1. `src/domain/{모듈}` — Entity, Port
+2. `src/application/{모듈}` — Use Case, DTO + `test/application/` TDD
+3. `src/infrastructure/` — Adapter + `di/container.ts` 등록
+4. `app/(dashboard)/{기능}` + `components/features/{모듈}` 연결
