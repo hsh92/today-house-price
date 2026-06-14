@@ -9,8 +9,10 @@
 
 ```
 today-house-price/
-├── pyproject.toml              # uv 프로젝트·의존성 (pytest, ruff 포함)
+├── pyproject.toml              # uv 프로젝트·의존성 (정본)
 ├── uv.lock                     # 잠금 파일
+├── requirements.txt            # pip용 런타임 (requests 등)
+├── requirements-dev.txt        # pip용 개발 (pytest, ruff 등)
 ├── src/today_house_price/      # Clean Architecture 패키지 (점진 확장)
 ├── scripts/
 │   └── fetch_seoul_house_prices.py   # 서울 실거래가 API → CSV 수집 CLI
@@ -37,6 +39,14 @@ copy .env.example .env
 # .env 파일에 SEOUL_OPEN_API_KEY=발급받은_인증키 입력
 ```
 
+**pip만 사용하는 경우:**
+
+```powershell
+pip install -r requirements-dev.txt   # 개발·테스트·린트 포함
+# 또는
+pip install -r requirements.txt       # 데이터 수집(런타임)만
+```
+
 **인증키 발급:** [서울 열린데이터광장](https://data.seoul.go.kr/) → 마이페이지 → Open API 인증키 신청
 
 ### 2. 데이터 수집 실행
@@ -61,7 +71,8 @@ uv run ruff check .
 | `--delay` | API 요청 간 대기(초) | `0.25` |
 | `--max-pages` | 연도당 최대 페이지 (테스트용) | 제한 없음 |
 
-> `requirements.txt`는 레거시입니다. 신규 의존성은 `uv add`로 `pyproject.toml`에 추가하세요.
+> 의존성 **정본**은 `pyproject.toml` + `uv.lock`입니다.  
+> `requirements.txt`(런타임), `requirements-dev.txt`(개발)는 pip 호환용이며 `uv export`로 동기화합니다.
 
 ---
 
@@ -219,7 +230,7 @@ uv run ruff check .
 
 | 날짜 | 요약 |
 |------|------|
-| 2026-06-14 | **`readme-and-github.mdc`** — Python·uv·tests/ 기준으로 갱신, commit/push는 요청 시만 명시 |
+| 2026-06-14 | **`requirements.txt`·`requirements-dev.txt`** — pyproject.toml·uv.lock과 동기화 (런타임+dev) |
 | 2026-06-14 | **`workflow.mdc` upgrade** — 프로젝트 스냅샷, 작업 유형표, 레거시 리팩터·실패 분석·충돌 해석 보강 |
 | 2026-06-14 | **`framework.mdc`** — `next.js-framework.mdc`를 Python CLI 규칙으로 교체·개명 |
 | 2026-06-14 | **Cursor 규칙** — `architecture`·`tech-stack`·`workflow`를 Python·uv 구조로 전면 개편 |
