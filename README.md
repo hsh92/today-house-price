@@ -1,7 +1,7 @@
 # today-house-price
 
-서울 부동산 실거래가 데이터를 수집·분석하기 위한 **Python + uv** 프로젝트입니다.  
-**서울 열린데이터광장 Open API**로 집값(실거래가) 데이터를 CSV로 저장합니다.
+서울 부동산 실거래가 데이터를 수집·분석·예측하기 위한 **Python + uv** 프로젝트입니다.  
+**서울 열린데이터광장 Open API**로 집값 데이터를 CSV로 저장하고, 선형 회귀 모델로 예측합니다. **Flask 웹 UI**로도 이용할 수 있습니다.
 
 ---
 
@@ -247,6 +247,9 @@ uv run ruff format --check .
 | 8 | 2026-06-14 | `readme-and-github.mdc` 갱신 | Python·uv 기준, GitHub 워크플로우 정리 |
 | 9 | 2026-06-14 | Clean Architecture·병렬 수집·전처리 | `src/`, `prepare_house_price_dataset.py`, pytest 34건 |
 | 10 | 2026-06-14 | readme-and-github 적용 점검 | README 프롬프트·작업 결과 보강, requirements 레거시 주석 |
+| 11 | 2026-06-14 | 선형 회귀·예측 CLI·성능 리포트 | `train_house_price_model.py`, `predict_house_price.py`, pytest 53건 |
+| 12 | 2026-06-14 | Flask 웹 예측 UI | `presentation/web/`, `run_web.py`, pytest 58건 |
+| 13 | 2026-06-14 | readme-and-github 재적용 | 프롬프트·작업 결과·변경 이력 동기화 |
 
 ---
 
@@ -332,6 +335,30 @@ uv run ruff format --check .
 
 **의도:** train/test CSV로 scikit-learn LinearRegression 학습·평가·모델 저장
 
+### 14. 집값 예측 CLI
+
+> **프롬프트:** `학습된 모델로 집값을 예측하는 CLI를 만들어줘` (세션 요약)
+
+**의도:** 단건·CSV 일괄 예측 CLI, Clean Architecture Use Case 연동
+
+### 15. 대화형 예측·오류 처리
+
+> **프롬프트:** 대화형 모드 및 CSV 일괄 예측 시 잘못된 행 건너뛰기 (세션 요약)
+
+**의도:** `--interactive` 메뉴, 일괄 예측 오류 로그 CSV
+
+### 16. Flask 웹 서비스
+
+> **프롬프트:** `flask web을 이용해서 웹으로 서비스를 이용하도록 만들어주세요`
+
+**의도:** 브라우저에서 단건·CSV 일괄 예측, 기존 `PredictPriceUseCase` 재사용
+
+### 17. readme-and-github 적용
+
+> **프롬프트:** `@.cursor/rules/readme-and-github.mdc 적용해줘`
+
+**의도:** README 필수 섹션(변경 이력·프롬프트·작업 결과·빠른 시작) 정합성 점검 및 갱신
+
 ---
 
 ## 작업 결과
@@ -414,15 +441,45 @@ uv run ruff format --check .
 | 작업 결과 | 초기 수집까지만 | 4~7번 결과 보강 |
 | 빠른 시작 | 전처리 CLI 반영됨 | fetch 옵션표 위치 수정, cov·format 검증 추가 |
 | 검증 명령 | pytest·ruff만 | `--cov-fail-under=80`, `ruff format --check` 추가 |
-| 레거시 requirements | uv 미사용 | `requirements*.txt` 의존성 줄 주석 처리 |
+| 레거시 requirements | uv 미사용 | `requirements*.txt` 의존성 줄 주석 처리 *(이후 `uv export`로 재활성·flask 포함)* |
 
 ### 8. 선형 회귀 집값 예측 모델 (2026-06-14)
 
 - **CLI:** `scripts/train_house_price_model.py`
 - **모델:** scikit-learn `LinearRegression` + OneHotEncoder
 - **저장:** `data/models/price_linear_regression.joblib`
-- **의존성:** `scikit-learn` (`uv add scikit-learn`)
+- **의존성:** `scikit-learn`, `matplotlib` (`uv add scikit-learn matplotlib`)
 - **실행 결과 (295k건 기준):** 테스트 MAE ≈ 33,722만원, RMSE ≈ 56,583만원, R² ≈ 0.61
+- **성능 리포트:** `data/models/reports/` — JSON + 지표·산점도·잔차 PNG 3종
+
+### 9. 집값 예측 CLI·대화형·오류 처리 (2026-06-14)
+
+- **CLI:** `scripts/predict_house_price.py`
+- **모드:** 단건 인자, CSV 일괄, `--interactive` 대화형
+- **일괄 예측:** 형식 오류 행 건너뛰기 + `{output}_errors.csv` 로그
+- **Domain:** `features.py` (`row_to_inference_input`, `describe_inference_row_errors`)
+- **Infrastructure:** `sklearn_predictor.py`, `prediction_error_logger.py`, `cli/predict_prompt.py`
+- **smoke (test.csv 59,026건):** 성공 58,805 / 건너뜀 221
+
+### 10. Flask 웹 예측 (2026-06-14)
+
+- **실행:** `uv run python scripts/run_web.py` → `http://127.0.0.1:5000`
+- **경로:** `src/today_house_price/presentation/web/` — `create_app()`, 단건(`/`, `/predict`), 일괄(`/batch`), 다운로드(`/download/<filename>`)
+- **의존성:** `flask` (`uv add flask`), `requirements.txt` `uv export` 동기화
+- **설정:** `.env.example` — `FLASK_SECRET_KEY`, `MODEL_PATH`, `WEB_UPLOAD_FOLDER`, `WEB_HOST`/`WEB_PORT`
+- **업로드:** `data/web_uploads/` (gitignore)
+- **테스트:** `tests/presentation/test_web_app.py` 5건
+
+### 11. readme-and-github.mdc 적용 (2026-06-14)
+
+| 항목 | 상태 | 조치 |
+|------|------|------|
+| 변경 이력 | Flask·예측 CLI 반영 | 최신 항목 유지 |
+| 프롬프트 | 13번까지 | 14~17번(예측·Flask·본 점검) 추가 |
+| 작업 결과 | 8번까지 | 9~11번(예측·Flask·점검) 보강 |
+| 빠른 시작 | Flask §6·검증 §7 | `uv sync`, `run_web.py`, cov 80% 명령 일치 |
+| requirements | `uv export` 활성 | flask 포함 런타임·dev 재생성 |
+| 검증 | Phase 3 | pytest 58 passed, coverage ~89%, ruff PASS |
 
 ---
 
@@ -438,6 +495,7 @@ uv run ruff format --check .
 
 | 날짜 | 요약 |
 |------|------|
+| 2026-06-14 | **readme-and-github 적용** — 프롬프트·작업 결과·작업 내역 동기화, 검증 명령 정합 |
 | 2026-06-14 | **Flask 웹 예측** — 단건·CSV 일괄 예측 UI, `scripts/run_web.py`, `presentation/web/` |
 | 2026-06-14 | **대화형 예측** — `--interactive` 질문·선택 메뉴 (자치구·건물용도·매물 정보) |
 | 2026-06-14 | **예측 오류 처리** — CSV 일괄 예측 시 잘못된 행 건너뛰기 + 오류 로그 CSV |
@@ -466,4 +524,5 @@ uv run ruff format --check .
 ## 향후 계획 (참고)
 
 - [ ] 국토교통부 API 연동으로 2021~2023년 데이터 보완
+- [x] Flask 웹으로 집값 예측 서비스 제공
 - [ ] Use Case·Adapter 단위 pytest 커버리지 유지 (80%+)
