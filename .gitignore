@@ -15,6 +15,7 @@ __pycache__/
 data/*.csv
 data/fetch_log.txt
 data/models/
+data/web_uploads/
 
 # OS·IDE
 .DS_Store

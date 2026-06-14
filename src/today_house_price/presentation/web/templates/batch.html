@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}CSV 일괄 예측{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>CSV 일괄 예측</h2>
+  <p class="hint">train/test 형식 CSV를 업로드하면 유효 행만 예측합니다. 오류 행은 별도 로그로 제공됩니다.</p>
+  <form method="post" action="{{ url_for('web.batch_predict') }}" enctype="multipart/form-data" class="form-grid">
+    <label class="full-width">
+      CSV 파일
+      <input type="file" name="csv_file" accept=".csv,text/csv" required>
+    </label>
+    <div class="form-actions">
+      <button type="submit">업로드 후 예측</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

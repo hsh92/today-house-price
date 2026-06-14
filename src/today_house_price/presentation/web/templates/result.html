@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}예측 결과{% endblock %}
+{% block content %}
+<section class="card result-card">
+  <h2>예측 결과</h2>
+  <p class="predicted-price">{{ "{:,.0f}".format(predicted_amount) }}<span>만원</span></p>
+  <dl class="detail-list">
+    <dt>자치구</dt><dd>{{ row.CGG_NM }}</dd>
+    <dt>건물용도</dt><dd>{{ row.BLDG_USG }}</dd>
+    <dt>건물면적</dt><dd>{{ row.ARCH_AREA }} ㎡</dd>
+    <dt>건축년도</dt><dd>{{ row.ARCH_YR }}</dd>
+    <dt>층</dt><dd>{{ row.FLR }}</dd>
+    <dt>계약일</dt><dd>{{ row.CTRT_DAY }}</dd>
+  </dl>
+  <a class="button-link" href="{{ url_for('web.index') }}">다시 예측</a>
+</section>
+{% endblock %}

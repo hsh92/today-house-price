@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from today_house_price.application.housing.use_cases.fetch_and_export import FetchAndExportUseCase
+from today_house_price.application.housing.use_cases.predict_price import PredictPriceUseCase
 from today_house_price.application.housing.use_cases.prepare_dataset import PrepareDatasetUseCase
 from today_house_price.application.housing.use_cases.train_price_model import TrainPriceModelUseCase
 from today_house_price.infrastructure.api.seoul_open_data import SeoulOpenDataClient
+from today_house_price.infrastructure.ml.sklearn_predictor import SklearnPricePredictor
 from today_house_price.infrastructure.ml.sklearn_trainer import SklearnLinearRegressionTrainer
 from today_house_price.infrastructure.persistence.csv_reader import CsvTransactionReader
 from today_house_price.infrastructure.persistence.csv_writer import CsvTransactionWriter
@@ -31,3 +33,8 @@ def build_train_price_model_use_case() -> TrainPriceModelUseCase:
     trainer = SklearnLinearRegressionTrainer()
     reporter = MatplotlibModelPerformanceReporter()
     return TrainPriceModelUseCase(reader=reader, trainer=trainer, reporter=reporter)
+
+
+def build_predict_price_use_case() -> PredictPriceUseCase:
+    predictor = SklearnPricePredictor()
+    return PredictPriceUseCase(predictor=predictor)

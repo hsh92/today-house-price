@@ -16,11 +16,14 @@ today-house-price/
 ├── src/today_house_price/      # Clean Architecture 패키지
 │   ├── domain/housing/         # 필드 정의, 요약 VO, 연도 계산
 │   ├── application/housing/    # Use Case (수집·전처리·학습)
-│   └── infrastructure/         # API, CSV, ML, DI container
+│   ├── infrastructure/         # API, CSV, ML, DI container
+│   └── presentation/web/       # Flask 웹 UI (단건·CSV 일괄 예측)
 ├── scripts/
 │   ├── fetch_seoul_house_prices.py      # API 수집 CLI
 │   ├── prepare_house_price_dataset.py   # 전처리·train/test 분할 CLI
-│   └── train_house_price_model.py       # 선형 회귀 학습 CLI
+│   ├── train_house_price_model.py       # 선형 회귀 학습 CLI
+│   ├── predict_house_price.py           # 집값 예측 CLI
+│   └── run_web.py                       # Flask 웹 서버
 ├── tests/                      # pytest
 ├── data/                       # 수집 결과 (gitignore)
 ├── .env.example
@@ -122,7 +125,67 @@ uv run python scripts/train_house_price_model.py
 | `actual_vs_predicted_test.png` | 테스트 실제값 vs 예측값 산점도 |
 | `residuals_test.png` | 테스트 잔차(실제-예측) 히스토그램 |
 
-### 5. 테스트·린트
+### 5. 집값 예측 (학습된 모델 사용)
+
+```powershell
+# 대화형 (질문·선택 메뉴) — 옵션 없이 실행해도 메뉴 표시
+uv run python scripts/predict_house_price.py --interactive
+
+# 단건 예측 (CLI 인자)
+uv run python scripts/predict_house_price.py `
+  --cgg-nm 강남구 --bldg-usg 아파트 `
+  --arch-area 84.5 --arch-yr 2010 --flr 10 --ctrt-day 20260601
+
+# CSV 일괄 예측
+uv run python scripts/predict_house_price.py `
+  --input-csv data/test.csv `
+  --output-csv data/predictions.csv
+```
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--model` | 학습된 모델 경로 | `data/models/price_linear_regression.joblib` |
+| `--interactive`, `-i` | 질문·선택 대화형 모드 | (인자 없을 때 자동) |
+| `--input-csv` | 예측할 매물 CSV | (단건 옵션 사용) |
+| `--output-csv` | 예측 결과 저장 | 미저장 |
+| `--error-log` | 건너뛴 행 오류 로그 CSV | `{output}_errors.csv` |
+| `--cgg-nm` | 자치구명 | — |
+| `--bldg-usg` | 건물용도 | — |
+| `--arch-area` | 건물면적(㎡) | — |
+| `--arch-yr` | 건축년도 | — |
+| `--flr` | 층 | — |
+| `--ctrt-day` | 계약일(YYYYMMDD) | — |
+
+CSV 일괄 예측 시 **형식 오류 행은 건너뛰고** 유효 행만 처리합니다. 건너뛴 행은 `--error-log` CSV에서 확인할 수 있습니다.
+
+**대화형 모드:** 자치구·건물용도 번호 선택, 면적·층·계약일 입력 후 즉시 예측. CSV 일괄 예측도 메뉴에서 선택 가능합니다.
+
+### 6. 웹 예측 (Flask)
+
+학습된 모델이 있어야 합니다 (`data/models/price_linear_regression.joblib`).
+
+```powershell
+uv run python scripts/run_web.py
+```
+
+브라우저에서 `http://127.0.0.1:5000` 접속.
+
+| 기능 | URL | 설명 |
+|------|-----|------|
+| 단건 예측 | `/` → `POST /predict` | 자치구·건물용도 선택, 면적·층·계약일 입력 |
+| CSV 일괄 | `/batch` → `POST /batch` | CSV 업로드 후 예측·오류 로그 다운로드 |
+
+| 환경 변수 | 설명 | 기본값 |
+|-----------|------|--------|
+| `FLASK_SECRET_KEY` | Flask 세션·flash 서명 키 | `dev-only-change-in-production` |
+| `MODEL_PATH` | 예측 모델 경로 | `data/models/price_linear_regression.joblib` |
+| `WEB_UPLOAD_FOLDER` | 업로드·결과 CSV 저장 | `data/web_uploads` |
+| `WEB_HOST` / `WEB_PORT` | 바인드 주소·포트 | `127.0.0.1` / `5000` |
+| `FLASK_DEBUG` | `1`이면 디버그 모드 | `0` |
+
+업로드 파일은 `data/web_uploads/`에 세션별로 저장되며 gitignore 대상입니다.
+
+### 7. 테스트·린트
 
 ```powershell
 uv run pytest
@@ -375,6 +438,10 @@ uv run ruff format --check .
 
 | 날짜 | 요약 |
 |------|------|
+| 2026-06-14 | **Flask 웹 예측** — 단건·CSV 일괄 예측 UI, `scripts/run_web.py`, `presentation/web/` |
+| 2026-06-14 | **대화형 예측** — `--interactive` 질문·선택 메뉴 (자치구·건물용도·매물 정보) |
+| 2026-06-14 | **예측 오류 처리** — CSV 일괄 예측 시 잘못된 행 건너뛰기 + 오류 로그 CSV |
+| 2026-06-14 | **집값 예측 CLI** — 학습 모델로 단건·CSV 일괄 예측 (`predict_house_price.py`) |
 | 2026-06-14 | **모델 성능 리포트** — JSON 수치 + 지표·산점도·잔차 차트 (`data/models/reports/`) |
 | 2026-06-14 | **모델 평가 보강** — 학습 결과에 MAPE·예측정확도(±10%) 출력 |
 | 2026-06-14 | **선형 회귀 집값 예측** — train/test CSV 학습 CLI, scikit-learn, MAE/RMSE/R² 평가 |

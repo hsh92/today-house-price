@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}일괄 예측 결과{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>일괄 예측 완료</h2>
+  <ul class="summary-list">
+    <li>전체 {{ "{:,}".format(total_rows) }}건</li>
+    <li>성공 {{ "{:,}".format(valid_rows) }}건</li>
+    <li>건너뜀 {{ "{:,}".format(skipped_rows) }}건</li>
+  </ul>
+  <div class="download-links">
+    <a class="button-link" href="{{ download_predictions }}">예측 결과 CSV 다운로드</a>
+    {% if download_errors %}
+      <a class="button-link secondary" href="{{ download_errors }}">오류 로그 CSV 다운로드</a>
+    {% endif %}
+  </div>
+  <a class="text-link" href="{{ url_for('web.batch_form') }}">다시 업로드</a>
+</section>
+{% endblock %}
