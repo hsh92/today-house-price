@@ -11,14 +11,15 @@
 today-house-price/
 ├── pyproject.toml              # uv 프로젝트·의존성 (정본)
 ├── uv.lock                     # 잠금 파일
-├── requirements.txt            # pip용 런타임 (requests 등)
-├── requirements-dev.txt        # pip용 개발 (pytest, ruff 등)
+├── requirements.txt            # pip용 런타임 (레거시·주석 비활성)
+├── requirements-dev.txt        # pip용 개발 (레거시·주석 비활성)
 ├── src/today_house_price/      # Clean Architecture 패키지
 │   ├── domain/housing/         # 필드 정의, 요약 VO, 연도 계산
 │   ├── application/housing/    # 요약 생성, FetchAndExport Use Case
 │   └── infrastructure/         # API, CSV, 요약 출력, DI container
 ├── scripts/
-│   └── fetch_seoul_house_prices.py   # CLI 진입점 (얇게 유지)
+│   ├── fetch_seoul_house_prices.py   # API 수집 CLI
+│   └── prepare_house_price_dataset.py  # 전처리·train/test 분할 CLI
 ├── tests/                      # pytest
 ├── data/                       # 수집 결과 (gitignore)
 ├── .env.example
@@ -42,12 +43,13 @@ copy .env.example .env
 # .env 파일에 SEOUL_OPEN_API_KEY=발급받은_인증키 입력
 ```
 
-**pip만 사용하는 경우:**
+**pip만 사용하는 경우 (레거시, 파일 비활성 시):**
 
 ```powershell
-pip install -r requirements-dev.txt   # 개발·테스트·린트 포함
-# 또는
-pip install -r requirements.txt       # 데이터 수집(런타임)만
+# requirements*.txt 내용이 주석 처리된 경우 — uv export로 재생성 후 사용
+# uv export --no-dev --no-emit-project --no-hashes -o requirements.txt
+# uv export --only-dev --no-emit-project --no-hashes -o requirements-dev.txt
+# pip install -r requirements-dev.txt
 ```
 
 **인증키 발급:** [서울 열린데이터광장](https://data.seoul.go.kr/) → 마이페이지 → Open API 인증키 신청
@@ -56,13 +58,6 @@ pip install -r requirements.txt       # 데이터 수집(런타임)만
 
 ```powershell
 uv run python scripts/fetch_seoul_house_prices.py --korean-headers
-```
-
-### 3. 테스트·린트
-
-```powershell
-uv run pytest
-uv run ruff check .
 ```
 
 | 옵션 | 설명 | 기본값 |
@@ -77,8 +72,38 @@ uv run ruff check .
 | `--max-pages` | 연도당 최대 페이지 (테스트용) | 제한 없음 |
 | `--no-summary` | 저장 후 데이터 요약 출력 생략 | 출력함 |
 
+### 3. 전처리 (누락 제거 · train/test 분할)
+
+```powershell
+uv run python scripts/prepare_house_price_dataset.py --korean-headers
+```
+
+기본값: `data/seoul_house_prices_5y.csv` → `data/train.csv` (80%) + `data/test.csv` (20%)
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--input` | 원본 CSV | `data/seoul_house_prices_5y.csv` |
+| `--train-output` | 훈련 CSV | `data/train.csv` |
+| `--test-output` | 테스트 CSV | `data/test.csv` |
+| `--train-ratio` | 훈련 비율 (0~1) | `0.8` |
+| `--seed` | 분할 재현 시드 | `42` |
+| `--strict` | **모든** 컬럼 필수 (기본: ML 핵심 9컬럼만) | 미사용 |
+| `--korean-headers` | 출력 헤더 한글화 | 미사용 |
+
+**기본 필수 컬럼 (빈 칸 있으면 행 제거):** 접수년도, 자치구명, 법정동명, 계약일, 물건금액, 건물면적, 건축년도, 건물용도, 층  
+(해제일·중개사 등 API상 자주 비는 컬럼은 `--strict` 없이는 검사하지 않음)
+
+### 4. 테스트·린트
+
+```powershell
+uv run pytest
+uv run pytest --cov=src/today_house_price --cov-fail-under=80
+uv run ruff check .
+uv run ruff format --check .
+```
+
 > 의존성 **정본**은 `pyproject.toml` + `uv.lock`입니다.  
-> `requirements.txt`(런타임), `requirements-dev.txt`(개발)는 pip 호환용이며 `uv export`로 동기화합니다.
+> `requirements.txt` / `requirements-dev.txt`는 pip 호환용(현재 비활성·주석)이며, 필요 시 `uv export`로 재생성합니다.
 
 ### CSV 저장 후 데이터 요약
 
@@ -128,6 +153,8 @@ uv run ruff check .
 | 6 | 2026-06-14 | `framework.mdc` 생성 | `next.js-framework.mdc` 삭제·Python CLI 규칙으로 교체 |
 | 7 | 2026-06-14 | `workflow.mdc` upgrade | Phase·TDD·검증·레거시 리팩터 가이드 보강 |
 | 8 | 2026-06-14 | `readme-and-github.mdc` 갱신 | Python·uv 기준, GitHub 워크플로우 정리 |
+| 9 | 2026-06-14 | Clean Architecture·병렬 수집·전처리 | `src/`, `prepare_house_price_dataset.py`, pytest 34건 |
+| 10 | 2026-06-14 | readme-and-github 적용 점검 | README 프롬프트·작업 결과 보강, requirements 레거시 주석 |
 
 ---
 
@@ -183,6 +210,30 @@ uv run ruff check .
 
 **의도:** 병렬 HTTP fetch로 수집 시간 단축, TDD·검증 후 Git 반영
 
+### 9. `.env` 인증키 오류
+
+> **프롬프트:** `.env` 파일에 인증키가 있는데 오류가 나옵니다. 확인
+
+**의도:** `scripts/` 등 하위 폴더 실행 시에도 프로젝트 루트 `.env` 로드
+
+### 10. `.env` 수정 커밋·푸시
+
+> **프롬프트:** `커밋·푸시`
+
+**의도:** `.env` 로드 수정 반영
+
+### 11. train/test 데이터셋 분할
+
+> **프롬프트:** `가져온 집값 데이터 파일에서 누락된 데이터(빈 칸)을 제거하고, 훈련용과 테스트용으로 나누는 파이썬 코드를 작성해줘`
+
+**의도:** ML용 전처리 — 누락 행 제거, train/test CSV 분할
+
+### 12. readme-and-github 적용 확인
+
+> **프롬프트:** `readme-and-github.mdc 적용 했는지 확인 하고, 사용하지 않는 파일의 내용은 주석처리 해줘`
+
+**의도:** README 필수 섹션·검증 명령 정합성 점검, 레거시 pip requirements 비활성화
+
 ---
 
 ## 작업 결과
@@ -237,6 +288,36 @@ uv run ruff check .
 
 **한계:** 서울 열린데이터광장 API는 **접수년도** 기준 필터를 사용하며, 현재 제공 데이터는 **2024~2026년 접수분**이 대부분입니다. 2022·2023년 접수 데이터는 API에서 제공되지 않았습니다. 2021~2023년 **전체** 실거래 이력이 필요하면 [국토교통부 아파트 매매 실거래가 API](https://www.data.go.kr/data/15126468/openapi.do)(공공데이터포털) 사용을 검토해야 합니다.
 
+### 4. Clean Architecture 리팩터·병렬 수집 (2026-06-14)
+
+- monolithic `fetch_seoul_house_prices.py` → `src/today_house_price/` 계층 분리
+- 병렬 fetch: `--workers 6`, `--year-workers 2`, 기본 `--delay 0`
+- CSV 저장 후 콘솔 데이터 요약 (`--no-summary`로 생략 가능)
+- pytest 22건 → 이후 전처리 추가 시 **34 passed**, coverage **~89%**
+
+### 5. `.env` 로드 수정 (2026-06-14)
+
+- **원인:** `load_dotenv()`가 `Path.cwd()/.env`만 탐색 → `scripts/` 실행 시 루트 `.env` 미인식
+- **수정:** `pyproject.toml`·패키지 경로 기준 상위 탐색, `utf-8-sig` 지원
+- 커밋 `16e398f`, push 완료
+
+### 6. 데이터셋 전처리·train/test 분할 (2026-06-14)
+
+- **CLI:** `scripts/prepare_house_price_dataset.py`
+- **로직:** ML 핵심 9컬럼 누락 행 제거 → seed 42, 8:2 분할
+- **실행 결과 (`seoul_house_prices_5y.csv`):** 원본 295,130건 → 제거 1건 → train 236,103 / test 59,026
+
+### 7. readme-and-github.mdc 적용 점검 (2026-06-14)
+
+| 항목 | 상태 | 조치 |
+|------|------|------|
+| 변경 이력 | 일부 누락 | 최신 작업 항목 추가 |
+| 프롬프트 | 8번까지 | 9~12번 세션 추가 |
+| 작업 결과 | 초기 수집까지만 | 4~7번 결과 보강 |
+| 빠른 시작 | 전처리 CLI 반영됨 | fetch 옵션표 위치 수정, cov·format 검증 추가 |
+| 검증 명령 | pytest·ruff만 | `--cov-fail-under=80`, `ruff format --check` 추가 |
+| 레거시 requirements | uv 미사용 | `requirements*.txt` 의존성 줄 주석 처리 |
+
 ---
 
 ## 보안·주의사항
@@ -251,6 +332,8 @@ uv run ruff check .
 
 | 날짜 | 요약 |
 |------|------|
+| 2026-06-14 | **readme-and-github 점검** — 프롬프트·작업 결과 보강, fetch 옵션표 정리, requirements 레거시 주석 |
+| 2026-06-14 | **데이터셋 전처리** — 누락 행 제거, train/test 분할 CLI (`prepare_house_price_dataset.py`) |
 | 2026-06-14 | **`.env` 로드 수정** — `scripts/` 등 하위 폴더에서 실행해도 프로젝트 루트 `.env` 탐색 |
 | 2026-06-14 | **수집 속도 개선** — 연도·페이지 병렬 fetch, `--workers`/`--year-workers`, 기본 delay 0 |
 | 2026-06-14 | **데이터 요약 출력** — CSV 저장 후 건수·항목·통계 요약, Clean Architecture 리팩터 |

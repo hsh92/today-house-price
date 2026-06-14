@@ -18,9 +18,7 @@ def test_load_dotenv_from_explicit_path(tmp_path: Path, monkeypatch) -> None:
     assert os.environ["SEOUL_OPEN_API_KEY"] == "from-file"
 
 
-def test_load_dotenv_finds_project_root_from_subdirectory(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_load_dotenv_finds_project_root_from_subdirectory(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / "project"
     scripts_dir = project_root / "scripts"
     scripts_dir.mkdir(parents=True)

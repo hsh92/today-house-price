@@ -1,23 +1,19 @@
-# today-house-price — 런타임 의존성 (pip 사용자용)
+# today-house-price — 런타임 의존성 (pip 사용자용 · 레거시)
 #
-# 권장: uv sync  (pyproject.toml + uv.lock 이 정본)
-# pip만 사용 시: pip install -r requirements.txt
-# 개발·테스트·린트 포함: pip install -r requirements-dev.txt
+# [비활성] 본 프로젝트는 uv(pyproject.toml + uv.lock)를 정본으로 사용합니다.
+# pip 설치가 필요하면 아래 export로 파일을 재생성한 뒤 주석을 해제하세요.
 #
-# pyproject.toml [project.dependencies] 와 동기화:
 #   uv export --no-dev --no-emit-project --no-hashes -o requirements.txt
 #
 # Python >=3.11
-#
 # 직접 의존성: requests (서울 열린데이터광장 API)
-# 아래는 uv.lock 기준 고정(transitive 포함)
-
-certifi==2026.5.20
-    # via requests
-charset-normalizer==3.4.7
-    # via requests
-idna==3.18
-    # via requests
-requests==2.34.2
-urllib3==2.7.0
-    # via requests
+#
+# certifi==2026.5.20
+#     # via requests
+# charset-normalizer==3.4.7
+#     # via requests
+# idna==3.18
+#     # via requests
+# requests==2.34.2
+# urllib3==2.7.0
+#     # via requests
