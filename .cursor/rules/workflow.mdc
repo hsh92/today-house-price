@@ -16,7 +16,7 @@ alwaysApply: true
 | 항목 | 현재 상태 |
 |------|-----------|
 | 패키지 | `src/today_house_price/` (스캐폴드, 점진 확장) |
-| CLI | `scripts/fetch_seoul_house_prices.py` (수집 로직 포함 — **리팩터 대상**) |
+| CLI | `scripts/fetch_seoul_house_prices.py` (얇은 진입점, 병렬 fetch 옵션) |
 | 테스트 | `tests/` + pytest (`pyproject.toml` 설정) |
 | 의존성 | `pyproject.toml` + `uv.lock` (`requirements.txt`는 레거시) |
 | 데이터 | `data/*.csv` — Git 제외, 로컬 재수집 |

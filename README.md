@@ -13,9 +13,12 @@ today-house-price/
 ├── uv.lock                     # 잠금 파일
 ├── requirements.txt            # pip용 런타임 (requests 등)
 ├── requirements-dev.txt        # pip용 개발 (pytest, ruff 등)
-├── src/today_house_price/      # Clean Architecture 패키지 (점진 확장)
+├── src/today_house_price/      # Clean Architecture 패키지
+│   ├── domain/housing/         # 필드 정의, 요약 VO, 연도 계산
+│   ├── application/housing/    # 요약 생성, FetchAndExport Use Case
+│   └── infrastructure/         # API, CSV, 요약 출력, DI container
 ├── scripts/
-│   └── fetch_seoul_house_prices.py   # 서울 실거래가 API → CSV 수집 CLI
+│   └── fetch_seoul_house_prices.py   # CLI 진입점 (얇게 유지)
 ├── tests/                      # pytest
 ├── data/                       # 수집 결과 (gitignore)
 ├── .env.example
@@ -68,11 +71,23 @@ uv run ruff check .
 | `--output` | CSV 저장 경로 | `data/seoul_house_prices_5y.csv` |
 | `--korean-headers` | CSV 헤더 한글화 | 미사용 |
 | `--page-size` | 페이지당 건수 (최대 1000) | `1000` |
-| `--delay` | API 요청 간 대기(초) | `0.25` |
+| `--delay` | API 요청 간 대기(초, worker당) | `0` |
+| `--workers` | 연도 내 페이지 병렬 worker 수 | `6` |
+| `--year-workers` | 연도별 병렬 worker 수 | `2` |
 | `--max-pages` | 연도당 최대 페이지 (테스트용) | 제한 없음 |
+| `--no-summary` | 저장 후 데이터 요약 출력 생략 | 출력함 |
 
 > 의존성 **정본**은 `pyproject.toml` + `uv.lock`입니다.  
 > `requirements.txt`(런타임), `requirements-dev.txt`(개발)는 pip 호환용이며 `uv export`로 동기화합니다.
+
+### CSV 저장 후 데이터 요약
+
+수집·저장이 끝나면 콘솔에 아래 정보가 출력됩니다.
+
+- 파일 경로·크기·총 건수
+- 계약일 범위, 거래금액(최소/최대/평균)
+- 접수년도·계약연도·자치구·건물용도별 건수
+- **포함 데이터 항목** (컬럼명 + 설명 21개)
 
 ---
 
@@ -162,6 +177,12 @@ uv run ruff check .
 
 **의도:** readme-and-github를 Python·uv 기준으로 수정 후 변경사항 커밋·푸시
 
+### 8. 수집 속도 개선
+
+> **프롬프트:** `workflow.mdc에 따라서 개발을 해주고 데이터 가져오는 속도 개선을 해주세요. 그리고 끝나면 커밋 및 푸쉬도 해주세요`
+
+**의도:** 병렬 HTTP fetch로 수집 시간 단축, TDD·검증 후 Git 반영
+
 ---
 
 ## 작업 결과
@@ -222,7 +243,7 @@ uv run ruff check .
 
 - `.env` 파일(API 키)은 **Git에 커밋하지 마세요**
 - `sample` 인증키는 요청당 최대 **5건**만 조회 가능 (본인 키 필수)
-- 대량 수집 시 API 트래픽·소요 시간을 고려하세요 (5년치 약 300페이지 이상)
+- 대량 수집 시 API 트래픽·소요 시간을 고려하세요 (기본 `--workers 6`, `--year-workers 2`로 병렬 수집)
 
 ---
 
@@ -230,7 +251,8 @@ uv run ruff check .
 
 | 날짜 | 요약 |
 |------|------|
-| 2026-06-14 | **`requirements.txt`·`requirements-dev.txt`** — pyproject.toml·uv.lock과 동기화 (런타임+dev) |
+| 2026-06-14 | **수집 속도 개선** — 연도·페이지 병렬 fetch, `--workers`/`--year-workers`, 기본 delay 0 |
+| 2026-06-14 | **데이터 요약 출력** — CSV 저장 후 건수·항목·통계 요약, Clean Architecture 리팩터 |
 | 2026-06-14 | **`workflow.mdc` upgrade** — 프로젝트 스냅샷, 작업 유형표, 레거시 리팩터·실패 분석·충돌 해석 보강 |
 | 2026-06-14 | **`framework.mdc`** — `next.js-framework.mdc`를 Python CLI 규칙으로 교체·개명 |
 | 2026-06-14 | **Cursor 규칙** — `architecture`·`tech-stack`·`workflow`를 Python·uv 구조로 전면 개편 |
@@ -245,6 +267,5 @@ uv run ruff check .
 
 ## 향후 계획 (참고)
 
-- [ ] `scripts/` 수집 로직을 `src/today_house_price/` Clean Architecture 계층으로 리팩터
 - [ ] 국토교통부 API 연동으로 2021~2023년 데이터 보완
-- [ ] Use Case·Adapter 단위 pytest (커버리지 80%+)
+- [ ] Use Case·Adapter 단위 pytest 커버리지 유지 (80%+)
