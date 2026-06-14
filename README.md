@@ -11,8 +11,8 @@
 today-house-price/
 ├── pyproject.toml              # uv 프로젝트·의존성 (정본)
 ├── uv.lock                     # 잠금 파일
-├── requirements.txt            # pip용 런타임 (레거시·주석 비활성)
-├── requirements-dev.txt        # pip용 개발 (레거시·주석 비활성)
+├── requirements.txt            # pip용 런타임 (uv export 동기화)
+├── requirements-dev.txt        # pip용 개발 (uv export 동기화)
 ├── src/today_house_price/      # Clean Architecture 패키지
 │   ├── domain/housing/         # 필드 정의, 요약 VO, 연도 계산
 │   ├── application/housing/    # 요약 생성, FetchAndExport Use Case
@@ -43,13 +43,12 @@ copy .env.example .env
 # .env 파일에 SEOUL_OPEN_API_KEY=발급받은_인증키 입력
 ```
 
-**pip만 사용하는 경우 (레거시, 파일 비활성 시):**
+**pip만 사용하는 경우:**
 
 ```powershell
-# requirements*.txt 내용이 주석 처리된 경우 — uv export로 재생성 후 사용
-# uv export --no-dev --no-emit-project --no-hashes -o requirements.txt
-# uv export --only-dev --no-emit-project --no-hashes -o requirements-dev.txt
-# pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt   # 개발·테스트·린트 포함
+# 또는
+pip install -r requirements.txt       # 데이터 수집(런타임)만
 ```
 
 **인증키 발급:** [서울 열린데이터광장](https://data.seoul.go.kr/) → 마이페이지 → Open API 인증키 신청
@@ -103,7 +102,7 @@ uv run ruff format --check .
 ```
 
 > 의존성 **정본**은 `pyproject.toml` + `uv.lock`입니다.  
-> `requirements.txt` / `requirements-dev.txt`는 pip 호환용(현재 비활성·주석)이며, 필요 시 `uv export`로 재생성합니다.
+> `requirements.txt`(런타임), `requirements-dev.txt`(개발)는 pip 호환용이며 `uv export`로 `pyproject.toml`·`uv.lock`과 동기화합니다.
 
 ### CSV 저장 후 데이터 요약
 
@@ -332,7 +331,8 @@ uv run ruff format --check .
 
 | 날짜 | 요약 |
 |------|------|
-| 2026-06-14 | **readme-and-github 점검** — 프롬프트·작업 결과 보강, fetch 옵션표 정리, requirements 레거시 주석 |
+| 2026-06-14 | **`requirements.txt` 동기화** — `uv export`로 pyproject.toml·uv.lock과 재생성 |
+| 2026-06-14 | **readme-and-github 점검** — 프롬프트·작업 결과 보강, fetch 옵션표 정리 |
 | 2026-06-14 | **데이터셋 전처리** — 누락 행 제거, train/test 분할 CLI (`prepare_house_price_dataset.py`) |
 | 2026-06-14 | **`.env` 로드 수정** — `scripts/` 등 하위 폴더에서 실행해도 프로젝트 루트 `.env` 탐색 |
 | 2026-06-14 | **수집 속도 개선** — 연도·페이지 병렬 fetch, `--workers`/`--year-workers`, 기본 delay 0 |
