@@ -5,7 +5,9 @@ description = "서울 부동산 실거래가 데이터 수집·분석"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "matplotlib>=3.11.0",
     "requests>=2.31.0",
+    "scikit-learn>=1.9.0",
 ]
 
 [dependency-groups]

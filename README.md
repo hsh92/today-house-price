@@ -15,11 +15,12 @@ today-house-price/
 ├── requirements-dev.txt        # pip용 개발 (uv export 동기화)
 ├── src/today_house_price/      # Clean Architecture 패키지
 │   ├── domain/housing/         # 필드 정의, 요약 VO, 연도 계산
-│   ├── application/housing/    # 요약 생성, FetchAndExport Use Case
-│   └── infrastructure/         # API, CSV, 요약 출력, DI container
+│   ├── application/housing/    # Use Case (수집·전처리·학습)
+│   └── infrastructure/         # API, CSV, ML, DI container
 ├── scripts/
-│   ├── fetch_seoul_house_prices.py   # API 수집 CLI
-│   └── prepare_house_price_dataset.py  # 전처리·train/test 분할 CLI
+│   ├── fetch_seoul_house_prices.py      # API 수집 CLI
+│   ├── prepare_house_price_dataset.py   # 전처리·train/test 분할 CLI
+│   └── train_house_price_model.py       # 선형 회귀 학습 CLI
 ├── tests/                      # pytest
 ├── data/                       # 수집 결과 (gitignore)
 ├── .env.example
@@ -92,7 +93,36 @@ uv run python scripts/prepare_house_price_dataset.py --korean-headers
 **기본 필수 컬럼 (빈 칸 있으면 행 제거):** 접수년도, 자치구명, 법정동명, 계약일, 물건금액, 건물면적, 건축년도, 건물용도, 층  
 (해제일·중개사 등 API상 자주 비는 컬럼은 `--strict` 없이는 검사하지 않음)
 
-### 4. 테스트·린트
+### 4. 집값 예측 모델 학습 (선형 회귀)
+
+```powershell
+uv run python scripts/train_house_price_model.py
+```
+
+기본값: `data/train.csv` + `data/test.csv` → `data/models/price_linear_regression.joblib`
+
+| 옵션 | 설명 | 기본값 |
+|------|------|--------|
+| `--train` | 훈련 CSV | `data/train.csv` |
+| `--test` | 테스트 CSV | `data/test.csv` |
+| `--model-output` | 모델 저장 경로 | `data/models/price_linear_regression.joblib` |
+| `--report-output` | 성능 리포트 폴더 | `data/models/reports` |
+| `--no-report` | JSON·차트 리포트 생략 | 생성함 |
+
+**입력 특성:** 건물면적, 건축년도, 층, 계약연·월, 자치구명(원-핫), 건물용도(원-핫)  
+**목표 변수:** 물건금액(만원)  
+**평가 지표:** MAE, RMSE, R², MAPE, 예측정확도(±10%) — 훈련·테스트 각각 출력
+
+**성능 리포트 (기본 생성):**
+
+| 파일 | 내용 |
+|------|------|
+| `performance_summary.json` | 훈련·테스트 수치 지표 |
+| `metrics_overview.png` | MAE/RMSE·MAPE/정확도 막대 차트 |
+| `actual_vs_predicted_test.png` | 테스트 실제값 vs 예측값 산점도 |
+| `residuals_test.png` | 테스트 잔차(실제-예측) 히스토그램 |
+
+### 5. 테스트·린트
 
 ```powershell
 uv run pytest
@@ -233,6 +263,12 @@ uv run ruff format --check .
 
 **의도:** README 필수 섹션·검증 명령 정합성 점검, 레거시 pip requirements 비활성화
 
+### 13. 선형 회귀 집값 예측 모델
+
+> **프롬프트:** `정리된 데이터를 이용해서 다음 집값을 예상하는 간단한 작선 예측기(선형 회귀) 모델을 학습시키는 파이썬 코드를 작성해줘`
+
+**의도:** train/test CSV로 scikit-learn LinearRegression 학습·평가·모델 저장
+
 ---
 
 ## 작업 결과
@@ -317,6 +353,14 @@ uv run ruff format --check .
 | 검증 명령 | pytest·ruff만 | `--cov-fail-under=80`, `ruff format --check` 추가 |
 | 레거시 requirements | uv 미사용 | `requirements*.txt` 의존성 줄 주석 처리 |
 
+### 8. 선형 회귀 집값 예측 모델 (2026-06-14)
+
+- **CLI:** `scripts/train_house_price_model.py`
+- **모델:** scikit-learn `LinearRegression` + OneHotEncoder
+- **저장:** `data/models/price_linear_regression.joblib`
+- **의존성:** `scikit-learn` (`uv add scikit-learn`)
+- **실행 결과 (295k건 기준):** 테스트 MAE ≈ 33,722만원, RMSE ≈ 56,583만원, R² ≈ 0.61
+
 ---
 
 ## 보안·주의사항
@@ -331,6 +375,9 @@ uv run ruff format --check .
 
 | 날짜 | 요약 |
 |------|------|
+| 2026-06-14 | **모델 성능 리포트** — JSON 수치 + 지표·산점도·잔차 차트 (`data/models/reports/`) |
+| 2026-06-14 | **모델 평가 보강** — 학습 결과에 MAPE·예측정확도(±10%) 출력 |
+| 2026-06-14 | **선형 회귀 집값 예측** — train/test CSV 학습 CLI, scikit-learn, MAE/RMSE/R² 평가 |
 | 2026-06-14 | **`requirements.txt` 동기화** — `uv export`로 pyproject.toml·uv.lock과 재생성 |
 | 2026-06-14 | **readme-and-github 점검** — 프롬프트·작업 결과 보강, fetch 옵션표 정리 |
 | 2026-06-14 | **데이터셋 전처리** — 누락 행 제거, train/test 분할 CLI (`prepare_house_price_dataset.py`) |
